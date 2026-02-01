@@ -1278,8 +1278,21 @@ let f_s_scad_path_sweep_sketch = function(
 
     // Get tangent connections and calculate rotation angles
     let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o_dec => o_dec.b_tangent);
-    let a_o_entity_connection__non_tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o_dec => !o_dec.b_tangent);
-    
+    let a_o_entity_connection__non_tangent_all = o_sketch_sweep_paths.a_o_entity_connection.filter(o_dec => !o_dec.b_tangent);
+
+    // Deduplicate non-tangent connections by entity pair (in either order)
+    let a_o_entity_connection__non_tangent = [];
+    for(let o_dec of a_o_entity_connection__non_tangent_all){
+        let b_duplicate = a_o_entity_connection__non_tangent.some(o_existing =>
+            (o_existing.o_entity_a === o_dec.o_entity_a && o_existing.o_entity_b === o_dec.o_entity_b) ||
+            (o_existing.o_entity_a === o_dec.o_entity_b && o_existing.o_entity_b === o_dec.o_entity_a)
+        );
+        if(!b_duplicate){
+            a_o_entity_connection__non_tangent.push(o_dec);
+        }
+    }
+    console.log(`Non-tangent connections: ${a_o_entity_connection__non_tangent_all.length} total, ${a_o_entity_connection__non_tangent.length} unique`);
+
     // Deduplicate tangent points by position (within tolerance)
     let n_dedup_tolerance = 0.001;
     let a_o_tangent_unique = [];
@@ -1345,6 +1358,127 @@ ${o_sketch_sweep_paths.a_o_pointwithrotation_noconnection.map((o, idx) =>
 ).join('\n')}
 }
 
+// ===== NON-TANGENT CONNECTION JOINTS =====
+// For non-tangent connections, we extend both entities and take their intersection
+${a_o_entity_connection__non_tangent.map((o_conn, idx) => {
+    // Find entity indices
+    let a_o_lines = o_sketch_sweep_paths.a_o_entity.filter(o => o && o.s_type === 'LINE');
+    let a_o_arcs = o_sketch_sweep_paths.a_o_entity.filter(o => o && o.s_type === 'ARC');
+
+    let n_idx_a = -1, n_idx_b = -1;
+    let s_type_a = o_conn.o_entity_a.s_type;
+    let s_type_b = o_conn.o_entity_b.s_type;
+
+    if(s_type_a === 'LINE') n_idx_a = a_o_lines.indexOf(o_conn.o_entity_a);
+    if(s_type_a === 'ARC') n_idx_a = a_o_arcs.indexOf(o_conn.o_entity_a);
+    if(s_type_b === 'LINE') n_idx_b = a_o_lines.indexOf(o_conn.o_entity_b);
+    if(s_type_b === 'ARC') n_idx_b = a_o_arcs.indexOf(o_conn.o_entity_b);
+
+    let s_entity_ref_a = s_type_a === 'LINE' ? `line_${n_idx_a}` : `arc_${n_idx_a}`;
+    let s_entity_ref_b = s_type_b === 'LINE' ? `line_${n_idx_b}` : `arc_${n_idx_b}`;
+
+    // Connection point
+    let cx = o_conn.o_trn_vec3_connected.n_x.toFixed(6);
+    let cy = o_conn.o_trn_vec3_connected.n_y.toFixed(6);
+    let cz = o_conn.o_trn_vec3_connected.n_z.toFixed(6);
+
+    // Determine extension direction for entity A (extend past connection point)
+    let b_a_connected_at_start = Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
+                                  Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
+    let b_b_connected_at_start = Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
+                                  Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
+
+    // Generate extended entity definitions
+    let s_extended_a = '';
+    let s_extended_b = '';
+
+    if(s_type_a === 'LINE') {
+        let ext_amount = 5; // extension amount in mm
+        let dir_x = o_conn.o_entity_a.o_vec3_direction.n_x;
+        let dir_y = o_conn.o_entity_a.o_vec3_direction.n_y;
+        if(b_a_connected_at_start) {
+            // Extend start point backward
+            let new_start_x = (o_conn.o_entity_a.o_vec3_trn_start.n_x - dir_x * ext_amount).toFixed(6);
+            let new_start_y = (o_conn.o_entity_a.o_vec3_trn_start.n_y - dir_y * ext_amount).toFixed(6);
+            s_extended_a = `${s_entity_ref_a}_extended = [[${new_start_x}, ${new_start_y}], [${o_conn.o_entity_a.o_vec3_trn_end.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn_end.n_y.toFixed(6)}]];`;
+        } else {
+            // Extend end point forward
+            let new_end_x = (o_conn.o_entity_a.o_vec3_trn_end.n_x + dir_x * ext_amount).toFixed(6);
+            let new_end_y = (o_conn.o_entity_a.o_vec3_trn_end.n_y + dir_y * ext_amount).toFixed(6);
+            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn_start.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn_start.n_y.toFixed(6)}], [${new_end_x}, ${new_end_y}]];`;
+        }
+    } else if(s_type_a === 'ARC') {
+        let ext_deg = 15; // extension in degrees
+        if(b_a_connected_at_start) {
+            let new_start = (o_conn.o_entity_a.n_ang_deg_start - ext_deg).toFixed(6);
+            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_a.n_radius.toFixed(6)}, ${new_start}, ${o_conn.o_entity_a.n_ang_deg_end.toFixed(6)}];`;
+        } else {
+            let new_end = (o_conn.o_entity_a.n_ang_deg_end + ext_deg).toFixed(6);
+            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_a.n_radius.toFixed(6)}, ${o_conn.o_entity_a.n_ang_deg_start.toFixed(6)}, ${new_end}];`;
+        }
+    }
+
+    if(s_type_b === 'LINE') {
+        let ext_amount = 5;
+        let dir_x = o_conn.o_entity_b.o_vec3_direction.n_x;
+        let dir_y = o_conn.o_entity_b.o_vec3_direction.n_y;
+        if(b_b_connected_at_start) {
+            let new_start_x = (o_conn.o_entity_b.o_vec3_trn_start.n_x - dir_x * ext_amount).toFixed(6);
+            let new_start_y = (o_conn.o_entity_b.o_vec3_trn_start.n_y - dir_y * ext_amount).toFixed(6);
+            s_extended_b = `${s_entity_ref_b}_extended = [[${new_start_x}, ${new_start_y}], [${o_conn.o_entity_b.o_vec3_trn_end.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn_end.n_y.toFixed(6)}]];`;
+        } else {
+            let new_end_x = (o_conn.o_entity_b.o_vec3_trn_end.n_x + dir_x * ext_amount).toFixed(6);
+            let new_end_y = (o_conn.o_entity_b.o_vec3_trn_end.n_y + dir_y * ext_amount).toFixed(6);
+            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn_start.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn_start.n_y.toFixed(6)}], [${new_end_x}, ${new_end_y}]];`;
+        }
+    } else if(s_type_b === 'ARC') {
+        let ext_deg = 15;
+        if(b_b_connected_at_start) {
+            let new_start = (o_conn.o_entity_b.n_ang_deg_start - ext_deg).toFixed(6);
+            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_b.n_radius.toFixed(6)}, ${new_start}, ${o_conn.o_entity_b.n_ang_deg_end.toFixed(6)}];`;
+        } else {
+            let new_end = (o_conn.o_entity_b.n_ang_deg_end + ext_deg).toFixed(6);
+            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_b.n_radius.toFixed(6)}, ${o_conn.o_entity_b.n_ang_deg_start.toFixed(6)}, ${new_end}];`;
+        }
+    }
+
+    // Use unique variable names including connection index to avoid conflicts
+    let s_var_a = `entity_a_extended_${idx}`;
+    let s_var_b = `entity_b_extended_${idx}`;
+
+    // Update sweep code to use the unique variable names
+    let s_sweep_a_local = s_type_a === 'LINE'
+        ? `path_sweep(profile, path2d(${s_var_a}))`
+        : `sweep_arc(profile, ${s_var_a}, n_segments=${n_segments})`;
+
+    let s_sweep_b_local = s_type_b === 'LINE'
+        ? `path_sweep(profile, path2d(${s_var_b}))`
+        : `sweep_arc(profile, ${s_var_b}, n_segments=${n_segments})`;
+
+    // Generate extended entity definitions with unique names
+    let s_extended_a_local = s_extended_a.replace(`${s_entity_ref_a}_extended`, s_var_a);
+    let s_extended_b_local = s_extended_b.replace(`${s_entity_ref_b}_extended`, s_var_b);
+
+    return `
+// Non-tangent connection ${idx}: ${s_type_a} meets ${s_type_b} at [${cx}, ${cy}]
+module ${s_name_sketch_sweep_paths}_non_tangent_joint_${idx}(profile) {
+    // Local extended entity definitions
+    ${s_extended_a_local}
+    ${s_extended_b_local}
+    intersection() {
+        ${s_sweep_a_local};
+        ${s_sweep_b_local};
+    }
+}`;
+}).join('\n')}
+
+// Module to place all non-tangent intersection joints
+module ${s_name_sketch_sweep_paths}_place_non_tangent_joints(profile) {
+${a_o_entity_connection__non_tangent.map((o, idx) =>
+    `    ${s_name_sketch_sweep_paths}_non_tangent_joint_${idx}(profile);`
+).join('\n')}
+}
+
 // Sweep pattern - sweeps profile along each path (lines, arcs, and circles)
 module ${s_name_sketch_sweep_paths}_sweep_pattern(profile) {
     union() {
@@ -1367,13 +1501,14 @@ module ${s_name_sketch_sweep_paths}_sweep_pattern(profile) {
     }
 }
 
-// Full pattern with tangent joints and endpoint joints
+// Full pattern with tangent joints, endpoint joints, and non-tangent intersection joints
 // sweep_profile: 2D points array for path_sweep (typically mirroredx profile)
 // joint_profile_for_revolve: 2D points array for revolve joints (x >= 0, typically for_revolve profile)
 // joint_profile_height: height of the joint profile (for translation in revolve)
 module ${s_name_sketch_sweep_paths}_full_pattern(
     b_make_joints = true,
     b_make_endpoint_joints = true,
+    b_make_non_tangent_joints = true,
     sweep_profile = ${s_name_sketch_profile}_mirroredx,
     joint_profile_for_revolve = ${s_name_sketch_profile}_for_revolve,
     joint_profile_height = ${s_name_sketch_profile}_height,
@@ -1387,6 +1522,9 @@ module ${s_name_sketch_sweep_paths}_full_pattern(
         }
         if(b_make_endpoint_joints){
             ${s_name_sketch_sweep_paths}_place_revolve_joints_at_endpoints(joint_profile_for_revolve, joint_profile_height, endpoint_joint_angle);
+        }
+        if(b_make_non_tangent_joints){
+            ${s_name_sketch_sweep_paths}_place_non_tangent_joints(sweep_profile);
         }
     }
 }
@@ -1406,6 +1544,7 @@ module part_with_difference(s=1){
         ${s_name_sketch_sweep_paths}_full_pattern(
             b_make_joints=true,
             b_make_endpoint_joints=true,
+            b_make_non_tangent_joints=true,
             sweep_profile=${s_name_sketch_profile}_mirroredx_scaled(s=s),
             joint_profile_for_revolve=${s_name_sketch_profile}_for_revolve_scaled(s=s),
             joint_profile_height=${s_name_sketch_profile}_height * s,
@@ -1418,6 +1557,7 @@ module part_with_difference(s=1){
         ${s_name_sketch_sweep_paths}_full_pattern(
             b_make_joints=false,
             b_make_endpoint_joints=false,
+            b_make_non_tangent_joints=false,
             sweep_profile=${s_name_sketch_profile_remover}_mirroredx_scaled(s=s)
         );
     }

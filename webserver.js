@@ -1,7 +1,8 @@
 // Simple Deno web server for Roseriser
-// Run with: deno run --allow-net --allow-read webserver.js
+// Run with: deno run --allow-net --allow-read --allow-write --allow-run webserver.js
 
 import DxfParser from "npm:dxf-parser";
+import { listInputFiles, listProfiles, listProfileCombo, batchConvert, checkOpenScad } from "./batch_conversion.js";
 
 const PORT = 8000;
 const STATIC_DIR = "./httpserved";
@@ -49,6 +50,147 @@ async function handleRequest(request) {
         } catch (e) {
             return new Response(JSON.stringify({ error: e.message }), {
                 status: 400,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
+    // API endpoint for listing input DXF files
+    if (path === "/api/list-input-files" && request.method === "GET") {
+        try {
+            const files = await listInputFiles();
+            return new Response(JSON.stringify(files), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
+    // API endpoint for listing profile DXF files
+    if (path === "/api/list-profiles" && request.method === "GET") {
+        try {
+            const files = await listProfiles();
+            return new Response(JSON.stringify(files), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
+    // API endpoint for listing profile combo presets
+    if (path === "/api/list-profile-combo" && request.method === "GET") {
+        try {
+            const a_o_combo = await listProfileCombo();
+            return new Response(JSON.stringify(a_o_combo), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
+    // API endpoint for checking OpenSCAD installation
+    if (path === "/api/check-openscad" && request.method === "GET") {
+        try {
+            const result = await checkOpenScad();
+            return new Response(JSON.stringify(result), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
+    // API endpoint for batch conversion (streaming response)
+    if (path === "/api/batch-convert" && request.method === "POST") {
+        try {
+            const body = await request.json();
+            const { profile, remover } = body;
+
+            if (!profile || !remover) {
+                return new Response(JSON.stringify({ error: "Missing profile or remover" }), {
+                    status: 400,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                });
+            }
+
+            // Create a streaming response
+            const stream = new ReadableStream({
+                async start(controller) {
+                    const encoder = new TextEncoder();
+                    try {
+                        for await (const event of batchConvert(profile, remover)) {
+                            const line = JSON.stringify(event) + "\n";
+                            controller.enqueue(encoder.encode(line));
+                        }
+                    } catch (e) {
+                        const errorEvent = JSON.stringify({ type: 'error', message: e.message }) + "\n";
+                        controller.enqueue(encoder.encode(errorEvent));
+                    } finally {
+                        controller.close();
+                    }
+                }
+            });
+
+            return new Response(stream, {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/x-ndjson",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
                 headers: {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",

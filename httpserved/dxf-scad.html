@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roseriser - DXF to SVG/SCAD Converter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #1e1e1e;
+            color: #fff;
+        }
+
+        /* Upload controls - fixed top right */
+        .upload-controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            max-width: 500px;
+        }
+        .file-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .file-selector label {
+            font-size: 11px;
+            color: #aaa;
+            text-transform: uppercase;
+        }
+        .file-selector select {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            min-width: 140px;
+        }
+        .file-selector select:hover {
+            background: #1177bb;
+        }
+        .file-selector select.loaded {
+            background: #388a34;
+        }
+        .file-selector input[type="file"] {
+            display: none;
+        }
+
+        /* Main layout */
+        .main-container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+
+        /* Left panel - Monaco editor */
+        .editor-panel {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #333;
+        }
+        .editor-tabs {
+            display: flex;
+            background: #252526;
+            border-bottom: 1px solid #333;
+        }
+        .editor-tab {
+            padding: 8px 16px;
+            background: #2d2d2d;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 13px;
+            border-right: 1px solid #333;
+        }
+        .editor-tab:hover {
+            color: #fff;
+        }
+        .editor-tab.active {
+            background: #1e1e1e;
+            color: #fff;
+        }
+        #editor-container {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Right panel - Viewer */
+        .viewer-panel {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+        .viewer-tabs {
+            display: flex;
+            background: #e0e0e0;
+            border-bottom: 1px solid #ccc;
+        }
+        .viewer-tab {
+            padding: 8px 16px;
+            background: #d0d0d0;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            border-right: 1px solid #ccc;
+        }
+        .viewer-tab:hover {
+            color: #333;
+            background: #e8e8e8;
+        }
+        .viewer-tab.active {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .viewer-toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 8px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #ddd;
+        }
+        .viewer-toolbar button {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .viewer-toolbar button:hover {
+            background: #e8e8e8;
+        }
+        .viewer-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* SVG viewers - stacked layout */
+        .svg-panels {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            gap: 2px;
+            background: #ccc;
+        }
+        .svg-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            min-height: 0;
+        }
+        .svg-panel-header {
+            padding: 4px 8px;
+            background: #e0e0e0;
+            font-size: 11px;
+            font-weight: bold;
+            color: #666;
+            text-transform: uppercase;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            gap: 8px;
+        }
+        .svg-panel-header span {
+            opacity: 0.6;
+        }
+        .svg-panel-header span.loaded {
+            opacity: 1;
+            color: #2e7d32;
+        }
+        .svg-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+        .svg-container:active {
+            cursor: grabbing;
+        }
+        .svg-wrapper {
+            position: absolute;
+            transform-origin: 0 0;
+            width: 100%;
+            height: 100%;
+        }
+        .svg-wrapper svg {
+            display: block;
+        }
+        
+        /* Overlay wrapper for profile/remover */
+        .svg-overlay-container {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .svg-overlay-container:active {
+            cursor: grabbing;
+        }
+        .svg-overlay-wrapper {
+            position: absolute;
+            transform-origin: 0 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .svg-overlay-wrapper.remover {
+            opacity: 0.5;
+        }
+        .svg-overlay-wrapper.remover svg * {
+            stroke: red !important;
+        }
+        .svg-panels.hidden {
+            display: none;
+        }
+        /* Axis lines */
+        .svg-axis {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .svg-axis-x {
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 1px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .svg-axis-y {
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* 3D viewer */
+        #threejs-container {
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        #threejs-container.active {
+            display: block;
+        }
+        #threejs-container canvas {
+            display: block;
+        }
+
+        /* Download buttons */
+        .download-controls {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+        }
+        .download-btn {
+            background: #6a4c93;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .download-btn:hover {
+            background: #7d5ba6;
+        }
+        .download-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        /* Status message */
+        .status {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Upload controls -->
+    <div class="upload-controls">
+        <div class="file-selector">
+            <label>1. Sketch Path</label>
+            <select id="select-sketch">
+                <option value="">-- Loading... --</option>
+            </select>
+            <input type="file" accept=".dxf" id="file-sketch">
+        </div>
+        <div class="file-selector">
+            <label>2. Profile Preset</label>
+            <select id="select-combo">
+                <option value="">-- Loading... --</option>
+            </select>
+        </div>
+        <div class="file-selector">
+            <label>Profile</label>
+            <select id="select-profile">
+                <option value="">-- Loading... --</option>
+            </select>
+            <input type="file" accept=".dxf" id="file-profile">
+        </div>
+        <div class="file-selector">
+            <label>Remover</label>
+            <select id="select-remover">
+                <option value="">-- Loading... --</option>
+            </select>
+            <input type="file" accept=".dxf" id="file-remover">
+        </div>  
+    </div>
+
+    <!-- Main layout -->
+    <div class="main-container">
+        <!-- Left: Monaco editor -->
+        <div class="editor-panel">
+            <div class="editor-tabs">
+                <button class="editor-tab active" data-content="scad">SCAD Output</button>
+                <button class="editor-tab" data-content="json">JSON Data</button>
+            </div>
+            <div id="editor-container"></div>
+        </div>
+
+        <!-- Right: Viewer (SVG / 3D) -->
+        <div class="viewer-panel">
+            <div class="viewer-tabs">
+                <button class="viewer-tab active" data-view="svg">2D SVG</button>
+                <button class="viewer-tab" data-view="3d">3D Preview</button>
+            </div>
+            <div class="viewer-toolbar" id="svg-toolbar">
+                <button id="zoom-in">Zoom In (+)</button>
+                <button id="zoom-out">Zoom Out (-)</button>
+                <button id="zoom-fit">Fit</button>
+                <button id="zoom-reset">Reset (1:1)</button>
+            </div>
+            <div class="viewer-toolbar" id="threejs-toolbar" style="display: none;">
+                <button id="reset-camera">Reset Camera</button>
+                <button id="toggle-wireframe">Wireframe</button>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #333;">
+                    Scale: <input type="range" id="scale-slider" min="0.1" max="2" step="0.1" value="0.5" style="width: 80px;">
+                    <span id="scale-value">0.5</span>
+                </label>
+            </div>
+            <div class="viewer-content">
+                <div class="svg-panels" id="svg-panels">
+                    <!-- Top: Sketch Path -->
+                    <div class="svg-panel">
+                        <div class="svg-panel-header">
+                            <span id="header-sketch">Sketch Path</span>
+                        </div>
+                        <div class="svg-container" id="svg-container-sketch">
+                            <div class="svg-axis svg-axis-x"></div>
+                            <div class="svg-axis svg-axis-y"></div>
+                            <div class="svg-wrapper" id="svg-wrapper-sketch">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+                                    <text x="50" y="50" text-anchor="middle" fill="#999" font-size="10">Select sketch path</text>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Bottom: Profile + Remover (overlaid) -->
+                    <div class="svg-panel">
+                        <div class="svg-panel-header">
+                            <span id="header-profile">Profile</span>
+                            <span id="header-remover" style="color: #c62828;">+ Remover</span>
+                        </div>
+                        <div class="svg-overlay-container" id="svg-container-profile">
+                            <div class="svg-axis svg-axis-x"></div>
+                            <div class="svg-axis svg-axis-y"></div>
+                            <div class="svg-overlay-wrapper" id="svg-wrapper-profile">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+                                    <text x="50" y="50" text-anchor="middle" fill="#999" font-size="10">Select profile</text>
+                                </svg>
+                            </div>
+                            <div class="svg-overlay-wrapper remover" id="svg-wrapper-remover">
+                                <!-- Remover SVG will be overlaid here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="threejs-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download buttons -->
+    <div class="download-controls">
+        <button class="download-btn" id="dl-svg" disabled>Download SVG</button>
+        <button class="download-btn" id="dl-scad" disabled>Download SCAD</button>
+        <button class="download-btn" id="dl-json" disabled>Download JSON</button>
+        <button class="download-btn" id="dl-stl" disabled>Download STL</button>
+    </div>
+
+    <!-- Status -->
+    <div class="status" id="status">Ready - upload DXF files to begin</div>
+
+    <!-- Navigation links -->
+    <div style="position: fixed; bottom: 10px; left: 10px; z-index: 1000; display: flex; gap: 10px;">
+        <a href="index.html" style="color: #4cc9f0; text-decoration: none; font-size: 14px; background: #16213e; padding: 8px 16px; border-radius: 4px;">
+            Home
+        </a>
+        <a href="batch.html" style="color: #4cc9f0; text-decoration: none; font-size: 14px; background: #16213e; padding: 8px 16px; border-radius: 4px;">
+            Batch Conversion
+        </a>
+    </div>
+
+    <!-- Monaco Editor from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+    <!-- Three.js from CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <!-- App module -->
+    <script type="module" src="app-scad.js"></script>
+</body>
+</html>

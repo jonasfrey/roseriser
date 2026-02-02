@@ -58,7 +58,7 @@ let f_o_vec3_direction_from_o_trnvec3_start_end = function(
         n_z / n_len
     );
 }
-const O_VEC3_Z_UP = f_o_vec3(0, 0, 1);
+let o_vec3__z_up = f_o_vec3(0, 0, 1);
 
 let f_b_vec3_equal = function(o_vec3_a, o_vec3_b, n_tolerance = 0.0001){
     return (
@@ -402,6 +402,57 @@ let f_o_sketch = function(
         n_scl_max
     }
 }
+
+// helper to check if two entities are duplicates
+let f_b_entity_duplicate = function(o_a, o_b, n_tolerance = 0.0001){
+    if(!o_a || !o_b) return false;
+    if(o_a.s_type !== o_b.s_type) return false;
+
+    let f_b_vec3_equal = function(v1, v2){
+        if(!v1 || !v2) return false;
+        return Math.abs(v1.n_x - v2.n_x) < n_tolerance &&
+               Math.abs(v1.n_y - v2.n_y) < n_tolerance &&
+               Math.abs((v1.n_z || 0) - (v2.n_z || 0)) < n_tolerance;
+    };
+
+    if(o_a.s_type === "LINE"){
+        // same direction or reversed
+        let b_same = f_b_vec3_equal(o_a.o_vec3_trn_start, o_b.o_vec3_trn_start) &&
+                     f_b_vec3_equal(o_a.o_vec3_trn_end, o_b.o_vec3_trn_end);
+        let b_reversed = f_b_vec3_equal(o_a.o_vec3_trn_start, o_b.o_vec3_trn_end) &&
+                         f_b_vec3_equal(o_a.o_vec3_trn_end, o_b.o_vec3_trn_start);
+        return b_same || b_reversed;
+    }
+
+    if(o_a.s_type === "ARC"){
+        let b_center = f_b_vec3_equal(o_a.o_vec3_trn_center, o_b.o_vec3_trn_center);
+        let b_radius = Math.abs(o_a.n_radius - o_b.n_radius) < n_tolerance;
+        let b_ang_start = Math.abs(o_a.n_ang_deg_start - o_b.n_ang_deg_start) < 0.01;
+        let b_ang_end = Math.abs(o_a.n_ang_deg_end - o_b.n_ang_deg_end) < 0.01;
+        return b_center && b_radius && b_ang_start && b_ang_end;
+    }
+
+    if(o_a.s_type === "CIRCLE"){
+        let b_center = f_b_vec3_equal(o_a.o_vec3_trn_center, o_b.o_vec3_trn_center);
+        let b_radius = Math.abs(o_a.n_radius - o_b.n_radius) < n_tolerance;
+        return b_center && b_radius;
+    }
+
+    return false;
+};
+
+// filter out duplicate entities from array
+let f_a_o_entity_deduplicated = function(a_o_entity){
+    let a_o_result = [];
+    for(let o_ent of a_o_entity){
+        let b_duplicate = a_o_result.some(o_existing => f_b_entity_duplicate(o_existing, o_ent));
+        if(!b_duplicate){
+            a_o_result.push(o_ent);
+        }
+    }
+    return a_o_result;
+};
+
 let f_a_o_entity_from_o_dxf = function(o_dxf){
     let a_o = [];
     for (const o_ent of o_dxf.entities) {
@@ -464,7 +515,13 @@ let f_a_o_entity_from_o_dxf = function(o_dxf){
         a_o.push(o_ent2);
     }
 
-    return a_o;
+    // filter out duplicates (common from CAD exports like Onshape)
+    let a_o_deduplicated = f_a_o_entity_deduplicated(a_o);
+    if(a_o.length !== a_o_deduplicated.length){
+        console.log(`Removed ${a_o.length - a_o_deduplicated.length} duplicate entities`);
+    }
+    a_o_deduplicated = a_o_deduplicated.filter(o => o !== null);
+    return a_o_deduplicated;
 }
 
 
@@ -492,6 +549,7 @@ let f_a_o_entity_from_o_dxf = function(o_dxf){
 // }
 let f_o_sketch_from_o_dxf = async function(o_dxf){
     let a_o_entity = await f_a_o_entity_from_o_dxf(o_dxf);
+    
     let o_sketch = f_o_sketch_from_a_o_entity(a_o_entity);
     return o_sketch;
 }
@@ -526,7 +584,7 @@ let f_a_o_vec3_trn_orderedaroundcentroid_from_a_o_vec3_trn = function(a_o_vec3_t
 
 let f_o_sketch_from_a_o_entity = function(
     a_o_entity, 
-    n_points_per_mm = 1
+    n_n_point_per_mm = 1
 ){
 
     let a_o_entity_connection = f_a_o_entity_connection_from_a_o_entity(
@@ -585,7 +643,7 @@ let f_o_sketch_from_a_o_entity = function(
     let a_o_vec3_trn = f_a_o_vec3_trn_ordered_from_params(
         a_o_entity,
         a_o_entity_connection,
-        n_points_per_mm
+        n_n_point_per_mm
     );
     let a_o_vec3_trn_xpositive = a_o_vec3_trn.filter(
         o_vec3 => o_vec3.n_x > 0
@@ -670,158 +728,229 @@ let f_s_svg_from_params = function(
     a_o_entity_connection,
     a_o_pointwithrotation_noconnection,
     a_o_vec3_trn,
-    n_scl_max
+    n_scl_max,
+    o_options = {}
 ){
+    // options with defaults
+    let b_entity = o_options.b_entity !== undefined ? o_options.b_entity : true;
+    let b_point = o_options.b_point !== undefined ? o_options.b_point : true;
+    let b_angle = o_options.b_angle !== undefined ? o_options.b_angle : true;
+    let b_bbox = o_options.b_bbox !== undefined ? o_options.b_bbox : true;
+    let b_legend = o_options.b_legend !== undefined ? o_options.b_legend : true;
+    let n_base_size = o_options.n_base_size !== undefined ? o_options.n_base_size : 2;
+
+    // color scheme with 0.8 opacity
+    let s_color__entity = "rgba(0, 180, 0, 0.8)";       // green for entities
+    let s_color__point = "rgba(220, 0, 0, 0.8)";        // red for points
+    let s_color__angle = "rgba(0, 100, 255, 0.8)";      // blue for angles
+    let s_color__angle_tangent = "rgba(0, 200, 100, 0.8)"; // lighter for tangent
+    let n_font_factor = 5; // font is 5x base size
 
     let a_s_svg = [];
     let o_bbox = f_o_bbox_init();
-    let n_stroke = n_scl_max *0.02;
 
+    // first pass: calculate bbox
     for (const o_line of a_o_entity.filter(o => o.s_type === "LINE")) {
-
-        let x1 = o_line.o_vec3_trn_start.n_x;
-        let y1 = o_line.o_vec3_trn_start.n_y;
-        let x2 = o_line.o_vec3_trn_end.n_x;
-        let y2 = o_line.o_vec3_trn_end.n_y;
-        f_update_bbox(o_bbox, x1, y1);
-        f_update_bbox(o_bbox, x2, y2);
-
-        a_s_svg.push(
-            `<line x1="${x1}" y1="${-y1}" x2="${x2}" y2="${-y2}" ` +
-            `stroke="blue" stroke-width="${n_stroke}" fill="none" />`
-        );
+        f_update_bbox(o_bbox, o_line.o_vec3_trn_start.n_x, o_line.o_vec3_trn_start.n_y);
+        f_update_bbox(o_bbox, o_line.o_vec3_trn_end.n_x, o_line.o_vec3_trn_end.n_y);
     }
-
     for (const o_circle of a_o_entity.filter(o => o.s_type === "CIRCLE")) {
-
         let cx = o_circle.o_vec3_trn.n_x;
         let cy = o_circle.o_vec3_trn.n_y;
         let r  = o_circle.n_radius;
-
         f_update_bbox(o_bbox, cx - r, cy - r);
         f_update_bbox(o_bbox, cx + r, cy + r);
-
-        a_s_svg.push(
-            `<circle cx="${cx}" cy="${-cy}" r="${r}" ` +
-            `stroke="green" stroke-width="${n_stroke}" fill="none" />`
-        );
     }
-
     for (const o_arc of a_o_entity.filter(o => o.s_type === "ARC")) {
-
         let p_start = f_o_point_from_arc(o_arc, o_arc.n_ang_deg_start);
         let p_end   = f_o_point_from_arc(o_arc, o_arc.n_ang_deg_end);
-
         f_update_bbox(o_bbox, p_start.x, p_start.y);
         f_update_bbox(o_bbox, p_end.x, p_end.y);
-
-        let sweep_deg = o_arc.n_ang_deg_end - o_arc.n_ang_deg_start;
-        if (sweep_deg < 0) sweep_deg += 360;
-
-        let large_arc_flag = sweep_deg > 180 ? 1 : 0;
-        let sweep_flag = 0; // DXF CCW → SVG sweep-flag = 0 with flipped Y
-
-        a_s_svg.push(
-            `<path d="M ${p_start.x} ${-p_start.y} ` +
-            `A ${o_arc.n_radius} ${o_arc.n_radius} 0 ` +
-            `${large_arc_flag} ${sweep_flag} ` +
-            `${p_end.x} ${-p_end.y}" ` +
-            `stroke="red" stroke-width="${n_stroke}" fill="none" />`
-        );
+    }
+    for (const o_vec3 of a_o_vec3_trn) {
+        f_update_bbox(o_bbox, o_vec3.n_x, o_vec3.n_y);
     }
 
-    // draw triangles at entity connection points
-    let n_triangle_size = Math.max(o_bbox.max_x - o_bbox.min_x, o_bbox.max_y - o_bbox.min_y) * 0.02 || 2;
-    for (const o_entity_connection of a_o_entity_connection) {
-        let cx = o_entity_connection.o_trn_vec3_connected.n_x;
-        let cy = -o_entity_connection.o_trn_vec3_connected.n_y; // flip Y for SVG
+    // calculate sizes based on bbox and base_size
+    let n_bbox_size = Math.max(o_bbox.max_x - o_bbox.min_x, o_bbox.max_y - o_bbox.min_y) || 100;
+    let n_unit = n_bbox_size * 0.01;
+    let n_stroke = n_unit * n_base_size * 0.5;
+    let n_marker_size = n_unit * n_base_size * 2;
+    let n_font_size = n_unit * n_base_size * n_font_factor;
 
-        // get direction vectors for both entities
-        let o_vec3_dir1 = f_o_vec3_direction_at_connection(o_entity_connection.o_entity_a, o_entity_connection.o_trn_vec3_connected);
-        let o_vec3_dir2 = f_o_vec3_direction_at_connection(o_entity_connection.o_entity_b, o_entity_connection.o_trn_vec3_connected);
+    // ENTITIES (green) - lines, arcs, circles
+    if (b_entity) {
+        for (const o_line of a_o_entity.filter(o => o.s_type === "LINE")) {
+            let x1 = o_line.o_vec3_trn_start.n_x;
+            let y1 = o_line.o_vec3_trn_start.n_y;
+            let x2 = o_line.o_vec3_trn_end.n_x;
+            let y2 = o_line.o_vec3_trn_end.n_y;
 
-        // average direction (bisector) - points "into" the angle between entities
-        let avg_x = (o_vec3_dir1.n_x + o_vec3_dir2.n_x) / 2;
-        let avg_y = (o_vec3_dir1.n_y + o_vec3_dir2.n_y) / 2;
-        let avg_len = Math.sqrt(avg_x * avg_x + avg_y * avg_y);
-        if (avg_len > 0.0001) {
-            avg_x /= avg_len;
-            avg_y /= avg_len;
+            a_s_svg.push(
+                `<line x1="${x1}" y1="${-y1}" x2="${x2}" y2="${-y2}" ` +
+                `stroke="${s_color__entity}" stroke-width="${n_stroke}" fill="none" />`
+            );
         }
 
-        // rotation angle for SVG (note: SVG Y is flipped)
-        let n_rotation_deg = Math.atan2(-avg_y, avg_x) * 180 / Math.PI;
+        for (const o_circle of a_o_entity.filter(o => o.s_type === "CIRCLE")) {
+            let cx = o_circle.o_vec3_trn.n_x;
+            let cy = o_circle.o_vec3_trn.n_y;
+            let r  = o_circle.n_radius;
 
-        // triangle pointing in the direction
-        // base triangle points right (+x), then rotate
-        let s_color = o_entity_connection.b_tangent ? "green" : "orange";
-        a_s_svg.push(
-            `<polygon points="${-n_triangle_size},${-n_triangle_size/2} ${-n_triangle_size},${n_triangle_size/2} ${n_triangle_size},0" ` +
-            `transform="translate(${cx},${cy}) rotate(${n_rotation_deg})" ` +
-            `fill="${s_color}" stroke="black" stroke-width="0.5" />`
-        );
+            a_s_svg.push(
+                `<circle cx="${cx}" cy="${-cy}" r="${r}" ` +
+                `stroke="${s_color__entity}" stroke-width="${n_stroke}" fill="none" />`
+            );
+        }
+
+        for (const o_arc of a_o_entity.filter(o => o.s_type === "ARC")) {
+            let p_start = f_o_point_from_arc(o_arc, o_arc.n_ang_deg_start);
+            let p_end   = f_o_point_from_arc(o_arc, o_arc.n_ang_deg_end);
+
+            let n_deg__sweep = o_arc.n_ang_deg_end - o_arc.n_ang_deg_start;
+            if (n_deg__sweep < 0) n_deg__sweep += 360;
+
+            let n_flag__large_arc = n_deg__sweep > 180 ? 1 : 0;
+            let n_flag__sweep = 0;
+
+            a_s_svg.push(
+                `<path d="M ${p_start.x} ${-p_start.y} ` +
+                `A ${o_arc.n_radius} ${o_arc.n_radius} 0 ` +
+                `${n_flag__large_arc} ${n_flag__sweep} ` +
+                `${p_end.x} ${-p_end.y}" ` +
+                `stroke="${s_color__entity}" stroke-width="${n_stroke}" fill="none" />`
+            );
+        }
     }
 
-    // draw blue arrows at unconnected points
-    for (const o_pointwithrotation of a_o_pointwithrotation_noconnection) {
-        let cx = o_pointwithrotation.o_vec3.n_x;
-        let cy = -o_pointwithrotation.o_vec3.n_y; // flip Y for SVG
+    // ANGLES (blue) - triangles at entity connection points
+    if (b_angle) {
+        for (const o_entity_connection of a_o_entity_connection) {
+            let cx = o_entity_connection.o_trn_vec3_connected.n_x;
+            let cy = -o_entity_connection.o_trn_vec3_connected.n_y;
 
-        // SVG rotation: negate the Y component since SVG Y is flipped
-        let n_rotation_deg = -o_pointwithrotation.n_rotation_deg;
+            let o_vec3_dir1 = f_o_vec3_direction_at_connection(o_entity_connection.o_entity_a, o_entity_connection.o_trn_vec3_connected);
+            let o_vec3_dir2 = f_o_vec3_direction_at_connection(o_entity_connection.o_entity_b, o_entity_connection.o_trn_vec3_connected);
 
-        // Arrow shape: shaft + arrowhead pointing right, then rotated
-        let n_arrow_length = n_triangle_size * 2;
-        let n_arrow_width = n_triangle_size * 0.3;
-        let n_head_length = n_triangle_size * 0.8;
-        let n_head_width = n_triangle_size * 0.6;
+            let avg_x = (o_vec3_dir1.n_x + o_vec3_dir2.n_x) / 2;
+            let avg_y = (o_vec3_dir1.n_y + o_vec3_dir2.n_y) / 2;
+            let avg_len = Math.sqrt(avg_x * avg_x + avg_y * avg_y);
+            if (avg_len > 0.0001) {
+                avg_x /= avg_len;
+                avg_y /= avg_len;
+            }
 
-        a_s_svg.push(
+            let n_rotation_deg = Math.atan2(-avg_y, avg_x) * 180 / Math.PI;
+            let s_color = o_entity_connection.b_tangent ? s_color__angle_tangent : s_color__angle;
+
+            a_s_svg.push(
+                `<polygon points="${-n_marker_size},${-n_marker_size/2} ${-n_marker_size},${n_marker_size/2} ${n_marker_size},0" ` +
+                `transform="translate(${cx},${cy}) rotate(${n_rotation_deg})" ` +
+                `fill="${s_color}" stroke="rgba(0,0,0,0.5)" stroke-width="${n_stroke * 0.5}" />`
+            );
+        }
+
+        // ANGLES (blue) - arrows at unconnected points
+        for (const o_pointwithrotation of a_o_pointwithrotation_noconnection) {
+            let cx = o_pointwithrotation.o_vec3.n_x;
+            let cy = -o_pointwithrotation.o_vec3.n_y;
+            let n_rotation_deg = -o_pointwithrotation.n_rotation_deg;
+
+            let n_arrow_length = n_marker_size * 2;
+            let n_arrow_width = n_marker_size * 0.3;
+            let n_head_length = n_marker_size * 0.8;
+            let n_head_width = n_marker_size * 0.6;
+
+            a_s_svg.push(
             `<g transform="translate(${cx},${cy}) rotate(${n_rotation_deg})">` +
             `<line x1="0" y1="0" x2="${n_arrow_length - n_head_length}" y2="0" ` +
-            `stroke="blue" stroke-width="${n_arrow_width}" />` +
+            `stroke="${s_color__angle}" stroke-width="${n_arrow_width}" />` +
             `<polygon points="${n_arrow_length - n_head_length},${-n_head_width} ${n_arrow_length - n_head_length},${n_head_width} ${n_arrow_length},0" ` +
-            `fill="blue" />` +
+            `fill="${s_color__angle}" />` +
             `</g>`
-        );
+            );
+        }
     }
 
-    // draw points with index numbers
-    let n_font_size = n_triangle_size * 0.8;
-    for(let n_idx = 0; n_idx < a_o_vec3_trn.length; n_idx++){
-        let o_vec3 = a_o_vec3_trn[n_idx];
-        let cx = o_vec3.n_x;
-        let cy = -o_vec3.n_y; // flip Y for SVG
+    // POINTS (red) - with index numbers
+    if (b_point) {
+        for(let n_idx = 0; n_idx < a_o_vec3_trn.length; n_idx++){
+            let o_vec3 = a_o_vec3_trn[n_idx];
+            let cx = o_vec3.n_x;
+            let cy = -o_vec3.n_y;
 
-        f_update_bbox(o_bbox, cx, -cy);
-        a_s_svg.push(
-            `<circle cx="${cx}" cy="${cy}" r="${n_triangle_size * 0.3}" ` +
-            `stroke="black" stroke-width="0.5" fill="yellow" />`
-        );
-        a_s_svg.push(
-            `<text x="${cx + n_triangle_size * 0.4}" y="${cy - n_triangle_size * 0.2}" ` +
-            `font-size="${n_font_size}" fill="black" stroke="white" stroke-width="${n_font_size*0.02}">${n_idx}</text>`
-        );
-    }   
-    
+            a_s_svg.push(
+                `<circle cx="${cx}" cy="${cy}" r="${n_marker_size * 0.4}" ` +
+                `stroke="rgba(0,0,0,0.5)" stroke-width="${n_stroke * 0.5}" fill="${s_color__point}" />`
+            );
+            a_s_svg.push(
+                `<text x="${cx + n_marker_size * 0.5}" y="${cy - n_marker_size * 0.3}" ` +
+                `font-size="${n_font_size}" font-family="sans-serif" font-weight="bold" ` +
+                `fill="rgba(0,0,0,0.8)" stroke="rgba(255,255,255,0.6)" stroke-width="${n_font_size*0.05}">${n_idx}</text>`
+            );
+        }
+    }
 
+    let n_scl_x = o_bbox.max_x - o_bbox.min_x;
+    let n_scl_y = o_bbox.max_y - o_bbox.min_y;
+    let n_pad = Math.max(n_scl_x, n_scl_y) * 0.05 || 5;
 
-    let width  = o_bbox.max_x - o_bbox.min_x;
-    let height = o_bbox.max_y - o_bbox.min_y;
-    let pad = Math.max(width, height) * 0.05 || 10;
+    // BOUNDING BOX visualization (dashed rectangle) - conditional
+    let s_bbox_svg = '';
+    if (b_bbox) {
+        s_bbox_svg = `
+            <rect x="${o_bbox.min_x}" y="${-o_bbox.max_y}"
+                  width="${n_scl_x}" height="${n_scl_y}"
+                  fill="none" stroke="rgba(128,128,128,0.3)" stroke-width="${n_stroke * 0.5}"
+                  stroke-dasharray="${n_stroke * 2} ${n_stroke * 2}" />`;
+    }
 
-    let viewBox = [
-        o_bbox.min_x - pad,
-        -(o_bbox.max_y + pad),
-        width  + pad * 2,
-        height + pad * 2
-    ].join(" ");
+    // LEGEND - positioned to the LEFT of the bounding box - conditional
+    let n_legend_spacing = n_font_size * 1.5;
+    let n_legend_marker = n_font_size * 0.6;
+    let n_legend_scl_x = n_font_size * 8;
+    let n_legend_scl_y = n_legend_spacing * 3.5;
+    let n_legend_gap = n_pad * 2;
+
+    // legend positioned to the left of bbox
+    let n_legend_x = o_bbox.min_x - n_legend_gap - n_legend_scl_x + n_legend_marker;
+    let n_legend_y = -o_bbox.max_y;
+
+    let s_legend_svg = '';
+    if (b_legend) {
+        s_legend_svg = `
+            <g class="legend" font-family="sans-serif" font-size="${n_font_size * 0.8}">
+                <rect x="${n_legend_x - n_legend_marker}" y="${n_legend_y - n_legend_marker}"
+                      width="${n_legend_scl_x}" height="${n_legend_scl_y}"
+                      fill="rgba(255,255,255,0.9)" stroke="rgba(0,0,0,0.3)" stroke-width="${n_stroke * 0.5}" rx="${n_stroke}"/>
+                <line x1="${n_legend_x}" y1="${n_legend_y + n_legend_spacing * 0.5}"
+                      x2="${n_legend_x + n_legend_marker * 2}" y2="${n_legend_y + n_legend_spacing * 0.5}"
+                      stroke="${s_color__entity}" stroke-width="${n_stroke}" />
+                <text x="${n_legend_x + n_legend_marker * 2.5}" y="${n_legend_y + n_legend_spacing * 0.7}" fill="rgba(0,0,0,0.8)">Entities</text>
+                <circle cx="${n_legend_x + n_legend_marker}" cy="${n_legend_y + n_legend_spacing * 1.5}" r="${n_legend_marker * 0.5}"
+                        fill="${s_color__point}" stroke="rgba(0,0,0,0.5)" stroke-width="${n_stroke * 0.3}"/>
+                <text x="${n_legend_x + n_legend_marker * 2.5}" y="${n_legend_y + n_legend_spacing * 1.7}" fill="rgba(0,0,0,0.8)">Points</text>
+                <polygon points="${n_legend_x},${n_legend_y + n_legend_spacing * 2.3} ${n_legend_x},${n_legend_y + n_legend_spacing * 2.7} ${n_legend_x + n_legend_marker * 2},${n_legend_y + n_legend_spacing * 2.5}"
+                         fill="${s_color__angle}" stroke="rgba(0,0,0,0.5)" stroke-width="${n_stroke * 0.3}"/>
+                <text x="${n_legend_x + n_legend_marker * 2.5}" y="${n_legend_y + n_legend_spacing * 2.7}" fill="rgba(0,0,0,0.8)">Angles</text>
+            </g>`;
+    }
+
+    // viewBox - adjust based on whether legend is shown
+    let n_viewbox_x = b_legend ? (n_legend_x - n_legend_marker - n_pad) : (o_bbox.min_x - n_pad);
+    let n_viewbox_y = -(o_bbox.max_y + n_pad);
+    let n_viewbox_scl_x = (o_bbox.max_x + n_pad) - n_viewbox_x;
+    let n_viewbox_scl_y = n_scl_y + n_pad * 2;
+
+    let s_viewbox = `${n_viewbox_x} ${n_viewbox_y} ${n_viewbox_scl_x} ${n_viewbox_scl_y}`;
 
     return (
         `<svg xmlns="http://www.w3.org/2000/svg" ` +
         `width="100%" height="100%" ` +
-        `viewBox="${viewBox}" stroke-linecap="round">` +
+        `viewBox="${s_viewbox}" stroke-linecap="round" preserveAspectRatio="xMidYMid meet">` +
+        s_bbox_svg +
         a_s_svg.join("\n") +
+        s_legend_svg +
         `</svg>`
     );
 };
@@ -934,9 +1063,9 @@ let f_a_o_entity_connection_from_a_o_entity = function(
     return a_o_entity_connection;
 }
 
-let f_o_vec3_trn_from_o_entity = function(o_ent, points_per_mm = 10){
+let f_o_vec3_trn_from_o_entity = function(o_ent, n_point_per_mm = 10){
     // checks how long the distance of the entity is (line, arc, circle)
-    // calculates number of points based on points_per_mm
+    // calculates number of points based on n_point_per_mm
     // returns array of o_vec3 points along the entity
     let a_o_vec3_trn = [];
     if(o_ent.s_type === "LINE"){
@@ -947,17 +1076,14 @@ let f_o_vec3_trn_from_o_entity = function(o_ent, points_per_mm = 10){
                 o_ent.o_vec3_trn_end.n_z - o_ent.o_vec3_trn_start.n_z
             )
         );
-        let n_num_points = Math.max(2, Math.ceil(n_len * points_per_mm));
-        for(let i=0; i<n_num_points; i++){
-            let t = i / (n_num_points - 1);
+        let n_cnt__point = Math.max(2, Math.ceil(n_len * n_point_per_mm));
+        for(let n_it = 0; n_it < n_cnt__point; n_it++){
+            let n_it_nor = n_it / (n_cnt__point - 1);
             a_o_vec3_trn.push(
                 f_o_vec3(
-                    o_ent.o_vec3_trn_start.n_x + t * (o_ent.o_vec3_trn_end.n_x - o_ent.o_vec3_trn_start
-.n_x),
-                    o_ent.o_vec3_trn_start.n_y + t * (o_ent.o_vec3_trn_end.n_y - o_ent.o_vec3_trn_start
-.n_y),
-                    o_ent.o_vec3_trn_start.n_z + t * (o_ent.o_vec3_trn_end.n_z - o_ent.o_vec3_trn_start
-.n_z)
+                    o_ent.o_vec3_trn_start.n_x + n_it_nor * (o_ent.o_vec3_trn_end.n_x - o_ent.o_vec3_trn_start.n_x),
+                    o_ent.o_vec3_trn_start.n_y + n_it_nor * (o_ent.o_vec3_trn_end.n_y - o_ent.o_vec3_trn_start.n_y),
+                    o_ent.o_vec3_trn_start.n_z + n_it_nor * (o_ent.o_vec3_trn_end.n_z - o_ent.o_vec3_trn_start.n_z)
                 )
             );
         }
@@ -967,10 +1093,10 @@ let f_o_vec3_trn_from_o_entity = function(o_ent, points_per_mm = 10){
             n_sweep_rad += Math.PI * 2;
         }
         let n_arc_length = n_sweep_rad * o_ent.n_radius;
-        let n_num_points = Math.max(2, Math.ceil(n_arc_length * points_per_mm));
-        for(let i=0; i<n_num_points; i++){
-            let t = i / (n_num_points - 1);
-            let n_ang_rad = o_ent.n_ang_rad_start + t * n_sweep_rad;
+        let n_cnt__point = Math.max(2, Math.ceil(n_arc_length * n_point_per_mm));
+        for(let n_it = 0; n_it < n_cnt__point; n_it++){
+            let n_it_nor = n_it / (n_cnt__point - 1);
+            let n_ang_rad = o_ent.n_ang_rad_start + n_it_nor * n_sweep_rad;
             a_o_vec3_trn.push(
                 f_o_vec3(
                     o_ent.o_vec3_trn.n_x + o_ent.n_radius * Math.cos(n_ang_rad),
@@ -981,10 +1107,10 @@ let f_o_vec3_trn_from_o_entity = function(o_ent, points_per_mm = 10){
         }
     } else if(o_ent.s_type === "CIRCLE"){
         let n_circumference = 2 * Math.PI * o_ent.n_radius;
-        let n_num_points = Math.max(3, Math.ceil(n_circumference * points_per_mm));
-        for(let i=0; i<n_num_points; i++){
-            let t = i / n_num_points;
-            let n_ang_rad = t * Math.PI * 2;
+        let n_cnt__point = Math.max(3, Math.ceil(n_circumference * n_point_per_mm));
+        for(let n_it = 0; n_it < n_cnt__point; n_it++){
+            let n_it_nor = n_it / n_cnt__point;
+            let n_ang_rad = n_it_nor * Math.PI * 2;
             a_o_vec3_trn.push(
                 f_o_vec3(
                     o_ent.o_vec3_trn.n_x + o_ent.n_radius * Math.cos(n_ang_rad),
@@ -1008,7 +1134,7 @@ let f_o_vec3_trn_from_a_o_entity = function(
     return a_o_vec3_trn;
 }
 
-let f_a_o_vec3_trn_from_o_entity_directed = function(o_ent, b_reversed, points_per_mm = 1){
+let f_a_o_vec3_trn_from_o_entity_directed = function(o_ent, b_reversed, n_point_per_mm = 1){
     let a_o_vec3_trn = [];
 
     if(o_ent.s_type === "LINE"){
@@ -1019,18 +1145,18 @@ let f_a_o_vec3_trn_from_o_entity_directed = function(o_ent, b_reversed, points_p
                 o_ent.o_vec3_trn_end.n_z - o_ent.o_vec3_trn_start.n_z
             )
         );
-        let n_num_points = Math.max(2, Math.ceil(n_len * points_per_mm));
+        let n_cnt__point = Math.max(2, Math.ceil(n_len * n_point_per_mm));
 
         let o_start = b_reversed ? o_ent.o_vec3_trn_end : o_ent.o_vec3_trn_start;
         let o_end = b_reversed ? o_ent.o_vec3_trn_start : o_ent.o_vec3_trn_end;
 
-        for(let i = 0; i < n_num_points; i++){
-            let t = i / (n_num_points - 1);
+        for(let n_it = 0; n_it < n_cnt__point; n_it++){
+            let n_it_nor = n_it / (n_cnt__point - 1);
             a_o_vec3_trn.push(
                 f_o_vec3(
-                    o_start.n_x + t * (o_end.n_x - o_start.n_x),
-                    o_start.n_y + t * (o_end.n_y - o_start.n_y),
-                    o_start.n_z + t * (o_end.n_z - o_start.n_z)
+                    o_start.n_x + n_it_nor * (o_end.n_x - o_start.n_x),
+                    o_start.n_y + n_it_nor * (o_end.n_y - o_start.n_y),
+                    o_start.n_z + n_it_nor * (o_end.n_z - o_start.n_z)
                 )
             );
         }
@@ -1041,17 +1167,17 @@ let f_a_o_vec3_trn_from_o_entity_directed = function(o_ent, b_reversed, points_p
             n_sweep_rad += Math.PI * 2;
         }
         let n_arc_length = n_sweep_rad * o_ent.n_radius;
-        let n_num_points = Math.max(2, Math.ceil(n_arc_length * points_per_mm));
+        let n_cnt__point = Math.max(2, Math.ceil(n_arc_length * n_point_per_mm));
 
-        for(let i = 0; i < n_num_points; i++){
-            let t = i / (n_num_points - 1);
+        for(let n_it = 0; n_it < n_cnt__point; n_it++){
+            let n_it_nor = n_it / (n_cnt__point - 1);
             let n_ang_rad;
             if(b_reversed){
                 // traverse from end to start (clockwise)
-                n_ang_rad = o_ent.n_ang_rad_end - t * n_sweep_rad;
+                n_ang_rad = o_ent.n_ang_rad_end - n_it_nor * n_sweep_rad;
             } else {
                 // traverse from start to end (counter-clockwise)
-                n_ang_rad = o_ent.n_ang_rad_start + t * n_sweep_rad;
+                n_ang_rad = o_ent.n_ang_rad_start + n_it_nor * n_sweep_rad;
             }
             a_o_vec3_trn.push(
                 f_o_vec3(
@@ -1069,7 +1195,7 @@ let f_a_o_vec3_trn_from_o_entity_directed = function(o_ent, b_reversed, points_p
 let f_a_o_vec3_trn_ordered_from_params = function(
     a_o_entity, 
     a_o_entity_connection, 
-    points_per_mm = 1
+    n_point_per_mm = 1
 ){
     a_o_entity = a_o_entity.filter(e => e && 'o_vec3_trn_start' in e);
     let a_o_dec = a_o_entity_connection;
@@ -1168,13 +1294,13 @@ let f_a_o_vec3_trn_ordered_from_params = function(
 
     // generate points in order
     let a_o_vec3_trn = [];
-    for(let i = 0; i < a_o_ordered_entities.length; i++){
-        let a_points = f_a_o_vec3_trn_from_o_entity_directed(a_o_ordered_entities[i], a_b_reversed[i], points_per_mm);
+    for(let n_it = 0; n_it < a_o_ordered_entities.length; n_it++){
+        let a_o_point = f_a_o_vec3_trn_from_o_entity_directed(a_o_ordered_entities[n_it], a_b_reversed[n_it], n_point_per_mm);
         // skip first point of subsequent entities (it's the same as last point of previous)
-        if(i > 0 && a_points.length > 0){
-            a_points = a_points.slice(1);
+        if(n_it > 0 && a_o_point.length > 0){
+            a_o_point = a_o_point.slice(1);
         }
-        a_o_vec3_trn.push(...a_points);
+        a_o_vec3_trn.push(...a_o_point);
     }
 
     return a_o_vec3_trn;
@@ -1257,6 +1383,40 @@ let f_s_scad_var_declation_sketch_entities = function(a_o_entity){
         translate(center)
         path_sweep(profile, circle_path,closed=true);
     }
+
+    // ===== ENTITY EXTENSION FUNCTIONS =====
+    // Extend a line definition by a given amount at start or end
+    // line_def: [[x1,y1], [x2,y2]]
+    // ext_amount: extension distance
+    // at_start: true to extend start point, false to extend end point
+    function extend_line(line_def, ext_amount, at_start=true) =
+        let(
+            p1 = line_def[0],
+            p2 = line_def[1],
+            dx = p2[0] - p1[0],
+            dy = p2[1] - p1[1],
+            len = sqrt(dx*dx + dy*dy),
+            dir_x = dx / len,
+            dir_y = dy / len
+        )
+        at_start
+            ? [[p1[0] - dir_x * ext_amount, p1[1] - dir_y * ext_amount], p2]
+            : [p1, [p2[0] + dir_x * ext_amount, p2[1] + dir_y * ext_amount]];
+
+    // Extend an arc definition by a given angle at start or end
+    // arc_def: [[cx,cy,cz], radius, start_angle, end_angle]
+    // ext_deg: extension in degrees
+    // at_start: true to extend start angle, false to extend end angle
+    function extend_arc(arc_def, ext_deg, at_start=true) =
+        let(
+            center = arc_def[0],
+            radius = arc_def[1],
+            start_angle = arc_def[2],
+            end_angle = arc_def[3]
+        )
+        at_start
+            ? [center, radius, start_angle - ext_deg, end_angle]
+            : [center, radius, start_angle, end_angle + ext_deg];
 
 
     `
@@ -1358,6 +1518,11 @@ ${o_sketch_sweep_paths.a_o_pointwithrotation_noconnection.map((o, idx) =>
 ).join('\n')}
 }
 
+// ===== EXTENSION PARAMETERS =====
+// Adjust these to control how far entities are extended for non-tangent joints
+line_extension_amount = ${o_sketch_profile.n_scl_max * 10}; // mm for lines
+arc_extension_degrees = 30; // degrees for arcs
+
 // ===== NON-TANGENT CONNECTION JOINTS =====
 // For non-tangent connections, we extend both entities and take their intersection
 ${a_o_entity_connection__non_tangent.map((o_conn, idx) => {
@@ -1380,94 +1545,37 @@ ${a_o_entity_connection__non_tangent.map((o_conn, idx) => {
     // Connection point
     let cx = o_conn.o_trn_vec3_connected.n_x.toFixed(6);
     let cy = o_conn.o_trn_vec3_connected.n_y.toFixed(6);
-    let cz = o_conn.o_trn_vec3_connected.n_z.toFixed(6);
 
-    // Determine extension direction for entity A (extend past connection point)
-    let b_a_connected_at_start = Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
-                                  Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
-    let b_b_connected_at_start = Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
-                                  Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
+    // Determine extension direction (at_start = true means connected at start point)
+    let b_a_at_start = Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
+                       Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
+    let b_b_at_start = Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
+                       Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
 
-    // Generate extended entity definitions
-    let s_extended_a = '';
-    let s_extended_b = '';
+    // Generate SCAD function calls for extended entities (calculation happens in SCAD)
+    let s_extend_a = s_type_a === 'LINE'
+        ? `extend_line(${s_entity_ref_a}, line_extension_amount, ${b_a_at_start})`
+        : `extend_arc(${s_entity_ref_a}, arc_extension_degrees, ${b_a_at_start})`;
 
-    if(s_type_a === 'LINE') {
-        let ext_amount = 5; // extension amount in mm
-        let dir_x = o_conn.o_entity_a.o_vec3_direction.n_x;
-        let dir_y = o_conn.o_entity_a.o_vec3_direction.n_y;
-        if(b_a_connected_at_start) {
-            // Extend start point backward
-            let new_start_x = (o_conn.o_entity_a.o_vec3_trn_start.n_x - dir_x * ext_amount).toFixed(6);
-            let new_start_y = (o_conn.o_entity_a.o_vec3_trn_start.n_y - dir_y * ext_amount).toFixed(6);
-            s_extended_a = `${s_entity_ref_a}_extended = [[${new_start_x}, ${new_start_y}], [${o_conn.o_entity_a.o_vec3_trn_end.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn_end.n_y.toFixed(6)}]];`;
-        } else {
-            // Extend end point forward
-            let new_end_x = (o_conn.o_entity_a.o_vec3_trn_end.n_x + dir_x * ext_amount).toFixed(6);
-            let new_end_y = (o_conn.o_entity_a.o_vec3_trn_end.n_y + dir_y * ext_amount).toFixed(6);
-            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn_start.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn_start.n_y.toFixed(6)}], [${new_end_x}, ${new_end_y}]];`;
-        }
-    } else if(s_type_a === 'ARC') {
-        let ext_deg = 15; // extension in degrees
-        if(b_a_connected_at_start) {
-            let new_start = (o_conn.o_entity_a.n_ang_deg_start - ext_deg).toFixed(6);
-            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_a.n_radius.toFixed(6)}, ${new_start}, ${o_conn.o_entity_a.n_ang_deg_end.toFixed(6)}];`;
-        } else {
-            let new_end = (o_conn.o_entity_a.n_ang_deg_end + ext_deg).toFixed(6);
-            s_extended_a = `${s_entity_ref_a}_extended = [[${o_conn.o_entity_a.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_a.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_a.n_radius.toFixed(6)}, ${o_conn.o_entity_a.n_ang_deg_start.toFixed(6)}, ${new_end}];`;
-        }
-    }
+    let s_extend_b = s_type_b === 'LINE'
+        ? `extend_line(${s_entity_ref_b}, line_extension_amount, ${b_b_at_start})`
+        : `extend_arc(${s_entity_ref_b}, arc_extension_degrees, ${b_b_at_start})`;
 
-    if(s_type_b === 'LINE') {
-        let ext_amount = 5;
-        let dir_x = o_conn.o_entity_b.o_vec3_direction.n_x;
-        let dir_y = o_conn.o_entity_b.o_vec3_direction.n_y;
-        if(b_b_connected_at_start) {
-            let new_start_x = (o_conn.o_entity_b.o_vec3_trn_start.n_x - dir_x * ext_amount).toFixed(6);
-            let new_start_y = (o_conn.o_entity_b.o_vec3_trn_start.n_y - dir_y * ext_amount).toFixed(6);
-            s_extended_b = `${s_entity_ref_b}_extended = [[${new_start_x}, ${new_start_y}], [${o_conn.o_entity_b.o_vec3_trn_end.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn_end.n_y.toFixed(6)}]];`;
-        } else {
-            let new_end_x = (o_conn.o_entity_b.o_vec3_trn_end.n_x + dir_x * ext_amount).toFixed(6);
-            let new_end_y = (o_conn.o_entity_b.o_vec3_trn_end.n_y + dir_y * ext_amount).toFixed(6);
-            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn_start.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn_start.n_y.toFixed(6)}], [${new_end_x}, ${new_end_y}]];`;
-        }
-    } else if(s_type_b === 'ARC') {
-        let ext_deg = 15;
-        if(b_b_connected_at_start) {
-            let new_start = (o_conn.o_entity_b.n_ang_deg_start - ext_deg).toFixed(6);
-            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_b.n_radius.toFixed(6)}, ${new_start}, ${o_conn.o_entity_b.n_ang_deg_end.toFixed(6)}];`;
-        } else {
-            let new_end = (o_conn.o_entity_b.n_ang_deg_end + ext_deg).toFixed(6);
-            s_extended_b = `${s_entity_ref_b}_extended = [[${o_conn.o_entity_b.o_vec3_trn.n_x.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_y.toFixed(6)}, ${o_conn.o_entity_b.o_vec3_trn.n_z.toFixed(6)}], ${o_conn.o_entity_b.n_radius.toFixed(6)}, ${o_conn.o_entity_b.n_ang_deg_start.toFixed(6)}, ${new_end}];`;
-        }
-    }
+    // Sweep code using the extend functions directly
+    let s_sweep_a = s_type_a === 'LINE'
+        ? `path_sweep(profile, path2d(${s_extend_a}))`
+        : `sweep_arc(profile, ${s_extend_a}, n_segments=${n_segments})`;
 
-    // Use unique variable names including connection index to avoid conflicts
-    let s_var_a = `entity_a_extended_${idx}`;
-    let s_var_b = `entity_b_extended_${idx}`;
-
-    // Update sweep code to use the unique variable names
-    let s_sweep_a_local = s_type_a === 'LINE'
-        ? `path_sweep(profile, path2d(${s_var_a}))`
-        : `sweep_arc(profile, ${s_var_a}, n_segments=${n_segments})`;
-
-    let s_sweep_b_local = s_type_b === 'LINE'
-        ? `path_sweep(profile, path2d(${s_var_b}))`
-        : `sweep_arc(profile, ${s_var_b}, n_segments=${n_segments})`;
-
-    // Generate extended entity definitions with unique names
-    let s_extended_a_local = s_extended_a.replace(`${s_entity_ref_a}_extended`, s_var_a);
-    let s_extended_b_local = s_extended_b.replace(`${s_entity_ref_b}_extended`, s_var_b);
+    let s_sweep_b = s_type_b === 'LINE'
+        ? `path_sweep(profile, path2d(${s_extend_b}))`
+        : `sweep_arc(profile, ${s_extend_b}, n_segments=${n_segments})`;
 
     return `
 // Non-tangent connection ${idx}: ${s_type_a} meets ${s_type_b} at [${cx}, ${cy}]
 module ${s_name_sketch_sweep_paths}_non_tangent_joint_${idx}(profile) {
-    // Local extended entity definitions
-    ${s_extended_a_local}
-    ${s_extended_b_local}
     intersection() {
-        ${s_sweep_a_local};
-        ${s_sweep_b_local};
+        ${s_sweep_a};
+        ${s_sweep_b};
     }
 }`;
 }).join('\n')}
@@ -1557,12 +1665,12 @@ module part_with_difference(s=1){
         ${s_name_sketch_sweep_paths}_full_pattern(
             b_make_joints=false,
             b_make_endpoint_joints=false,
-            b_make_non_tangent_joints=false,
+            b_make_non_tangent_joints=true,
             sweep_profile=${s_name_sketch_profile_remover}_mirroredx_scaled(s=s)
         );
     }
 }
-part_with_difference(s=0.5);
+part_with_difference(s=1.0);
     `
     return s_scad;
 }
@@ -1575,73 +1683,82 @@ let f_s_scad_profile_functions_from_o_sketch = function(o_sketch, s_profile_name
     }
 
     // calculate bounds
-    let minX = Math.min(...a_o_vec3.map(p => p.n_x));
-    let maxX = Math.max(...a_o_vec3.map(p => p.n_x));
-    let minY = Math.min(...a_o_vec3.map(p => p.n_y));
-    let maxY = Math.max(...a_o_vec3.map(p => p.n_y));
-    let centerY = (minY + maxY) / 2;
+    let n_x__min = Math.min(...a_o_vec3.map(p => p.n_x));
+    let n_x__max = Math.max(...a_o_vec3.map(p => p.n_x));
+    let n_y__min = Math.min(...a_o_vec3.map(p => p.n_y));
+    let n_y__max = Math.max(...a_o_vec3.map(p => p.n_y));
+    let n_y__center = (n_y__min + n_y__max) / 2;
 
-    // 1. Compute xpositive points (shift so minX = 0, center on Y)
-    let a_xpositive = a_o_vec3.map(p => ({
-        x: p.n_x - minX,
-        y: p.n_y - centerY
+    // 1. Filter for x >= 0 points only (right half of profile), centered on Y
+    let a_o_xpositive__raw = a_o_vec3.filter(p => p.n_x >= -0.001);
+
+    // If no x-positive points, use all points (profile might be on left side)
+    if(a_o_xpositive__raw.length === 0){
+        a_o_xpositive__raw = a_o_vec3;
+    }
+
+    // Shift so minX of filtered points = 0, center on Y
+    let n_x__min_filtered = Math.min(...a_o_xpositive__raw.map(p => p.n_x));
+    let a_o_xpositive = a_o_xpositive__raw.map(p => ({
+        x: p.n_x - n_x__min_filtered,
+        y: p.n_y - n_y__center
     }));
 
     // 2. Compute mirroredx points (mirror xpositive, skip duplicates at X≈0)
-    let a_mirroredx = [...a_xpositive];
-    let lastIdx = a_xpositive.length - 1;
-    let startIdx = Math.abs(a_xpositive[lastIdx].x) < 0.0001 ? lastIdx - 1 : lastIdx;
-    let endIdx = Math.abs(a_xpositive[0].x) < 0.0001 ? 1 : 0;
-    for (let i = startIdx; i >= endIdx; i--) {
-        a_mirroredx.push({ x: -a_xpositive[i].x, y: a_xpositive[i].y });
+    let a_o_mirroredx = [...a_o_xpositive];
+    let n_idx__last = a_o_xpositive.length - 1;
+    let n_idx__start = Math.abs(a_o_xpositive[n_idx__last].x) < 0.0001 ? n_idx__last - 1 : n_idx__last;
+    let n_idx__end = Math.abs(a_o_xpositive[0].x) < 0.0001 ? 1 : 0;
+    for (let n_it = n_idx__start; n_it >= n_idx__end; n_it--) {
+        a_o_mirroredx.push({ x: -a_o_xpositive[n_it].x, y: a_o_xpositive[n_it].y });
     }
 
     // 3. Compute rotatedz points (rotate 90° CW: [x, y] -> [y, -x])
-    let a_rotatedz = a_mirroredx.map(p => ({ x: p.y, y: -p.x }));
+    let a_o_rotatedz = a_o_mirroredx.map(p => ({ x: p.y, y: -p.x }));
 
     // 4. Compute for_revolve points (rotatedz shifted so min_x = 0)
-    let rotatedMinX = Math.min(...a_rotatedz.map(p => p.x));
-    let a_for_revolve = a_rotatedz.map(p => ({ x: p.x - rotatedMinX, y: p.y }));
+    let n_x__min_rotated = Math.min(...a_o_rotatedz.map(p => p.x));
+    let a_o_for_revolve = a_o_rotatedz.map(p => ({ x: p.x - n_x__min_rotated, y: p.y }));
 
     // Format point for SCAD output
-    let f_s_point = (p) => `[${p.x.toFixed(6)}, ${p.y.toFixed(6)}]`;
+    let f_s_point = (o_p) => `[${o_p.x.toFixed(6)}, ${o_p.y.toFixed(6)}]`;
 
     let s_scad = `
 include <BOSL2/std.scad>
 
 // Profile: ${s_profile_name}
-// Points: ${a_o_vec3.length} (xpositive), ${a_mirroredx.length} (mirrored)
-// Bounds: X[${minX.toFixed(4)}, ${maxX.toFixed(4)}] Y[${minY.toFixed(4)}, ${maxY.toFixed(4)}]
+// Points: ${a_o_vec3.length} (xpositive), ${a_o_mirroredx.length} (mirrored)
+// Bounds: X[${n_x__min.toFixed(4)}, ${n_x__max.toFixed(4)}] Y[${n_y__min.toFixed(4)}, ${n_y__max.toFixed(4)}]
 
 // Profile bounding box
 // Width = max X * 2 (for mirrored profile)
 // Height = max Y after centering (half of total Y range)
-${s_profile_name}_width = ${((maxX - minX) * 2).toFixed(6)};
-${s_profile_name}_height = ${((maxY - minY) / 2).toFixed(6)};
+${s_profile_name}_width = ${((n_x__max - n_x__min) * 2).toFixed(6)};
+${s_profile_name}_height = ${((n_y__max - n_y__min) / 2).toFixed(6)};
 
 // Original DXF position (translation applied to normalize profile)
-${s_profile_name}_trn_x = ${minX.toFixed(6)};
-${s_profile_name}_trn_y = ${minY.toFixed(6)};
+${s_profile_name}_trn_x = ${n_x__min.toFixed(6)};
+${s_profile_name}_trn_y = ${n_y__min.toFixed(6)};
 
 // Half profile from DXF (x-positive side, right half)
 // Useful for rotate_extrude which requires x >= 0
 ${s_profile_name}_xpositive = [
-${a_xpositive.map(p => "    " + f_s_point(p)).join(",\n")}
+${a_o_xpositive.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
 ];
 
 // Full symmetric profile (mirrored from xpositive, pre-computed)
 ${s_profile_name}_mirroredx = [
-${a_mirroredx.map(p => "    " + f_s_point(p)).join(",\n")}
+${a_o_mirroredx.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
 ];
 
 // Full profile rotated 90 degrees clockwise around Z axis (pre-computed)
 ${s_profile_name}_rotatedz = [
-${a_rotatedz.map(p => "    " + f_s_point(p)).join(",\n")}
+${a_o_rotatedz.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
 ];
 
 // Profile prepared for rotate_extrude around X axis (pre-computed)
 ${s_profile_name}_for_revolve = [
-${a_for_revolve.map(p => "    " + f_s_point(p)).join(",\n")}
+${a_o_for_revolve.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
 ];
 
 // Scaled profile functions
@@ -1707,6 +1824,17 @@ ${(b_run_preview) ? `` : `//`}${s_profile_name}_preview();
     return s_scad;
 }
 
+// Generate SVG from sketch object with options
+let f_s_svg_from_o_sketch = function(o_sketch, o_options = {}) {
+    return f_s_svg_from_params(
+        o_sketch.a_o_entity,
+        o_sketch.a_o_entity_connection,
+        o_sketch.a_o_pointwithrotation_noconnection,
+        o_sketch.a_o_vec3_trn,
+        o_sketch.n_scl_max,
+        o_options
+    );
+};
 
 export {
     f_o_vec3,
@@ -1730,5 +1858,6 @@ export {
     f_a_o_vec3_trn_ordered_from_params,
     f_s_scad_var_declation_sketch_entities,
     f_s_scad_profile_functions_from_o_sketch,
-    f_s_scad_path_sweep_sketch
+    f_s_scad_path_sweep_sketch,
+    f_s_svg_from_o_sketch
 }

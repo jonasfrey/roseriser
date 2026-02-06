@@ -509,11 +509,11 @@ let f_process_all_file = function() {
         document.getElementById('dl-svg').disabled = false;
     }
     if (o_state.o_sketch.profile) {
-        o_viewer__profile.setSVG(f_s_svg_from_o_sketch(o_state.o_sketch.profile));
+        o_viewer__profile.setSVG(o_state.o_sketch.profile.s_svg_points_ordered_mirrored);
     }
-    if (o_state.o_sketch.remover) {
-        o_viewer__profile.setRemoverSVG(f_s_svg_from_o_sketch(o_state.o_sketch.remover));
-    }
+    // if (o_state.o_sketch.remover) {
+    //     o_viewer__profile.setRemoverSVG(f_s_svg_from_o_sketch(o_state.o_sketch.remover));
+    // }
 
     // Generate 3D preview if sketch and profile are available
     if (o_state.o_sketch.sketch && o_state.o_sketch.profile) {
@@ -544,6 +544,7 @@ let f_process_all_file = function() {
         );
         document.getElementById('dl-scad').disabled = false;
         f_update_status('All files processed - SCAD generated');
+        f_save_scad_to_server(o_state.o_output.scad, 'dxf-scad');
     } else if (o_state.o_sketch.sketch && o_state.o_sketch.profile) {
         let s_name__profile = o_state.o_file.profile.name.replace(/\.dxf$/i, '');
         o_state.o_output.scad = f_s_scad_profile_functions_from_o_sketch(o_state.o_sketch.profile, s_name__profile, true);
@@ -602,6 +603,22 @@ let f_download_file = function(s_content, s_filename, s_mime_type) {
     el_a.download = s_filename;
     el_a.click();
     URL.revokeObjectURL(s_url);
+};
+
+let f_save_scad_to_server = async function(s_scad, s_app) {
+    try {
+        let o_response = await fetch('/api/save-scad', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ s_scad, s_app })
+        });
+        let o_result = await o_response.json();
+        if (o_result.b_success) {
+            console.log(`SCAD saved to server: ${o_result.s_filename}`);
+        }
+    } catch (o_err) {
+        console.error('Failed to save SCAD to server:', o_err);
+    }
 };
 
 // ============ FILE SELECTION HANDLING ============

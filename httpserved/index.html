@@ -39,7 +39,7 @@
             gap: 30px;
             flex-wrap: wrap;
             justify-content: center;
-            max-width: 1000px;
+            max-width: 1300px;
         }
         .nav-card {
             background: #16213e;
@@ -77,7 +77,10 @@
         }
         .nav-card.svg .icon { color: #4ade80; }
         .nav-card.scad .icon { color: #f472b6; }
+        .nav-card.cylinder .icon { color: #60a5fa; }
         .nav-card.batch .icon { color: #fbbf24; }
+        .nav-card.buttons .icon { color: #c084fc; }
+        .nav-card.debug .icon { color: #f0a04b; }
         footer {
             margin-top: 60px;
             font-size: 13px;
@@ -102,10 +105,28 @@
             <p>Convert DXF sketch paths with profiles to OpenSCAD code. Includes Monaco editor, 2D/3D preview and STL export.</p>
         </a>
 
+        <a href="dxf-scad-cylinder.html" class="nav-card cylinder">
+            <div class="icon">&#x25EF;</div>
+            <h2>Cylindric Sweep</h2>
+            <p>Wrap 2D sketch paths around a cylinder. X-axis maps to angle, Y-axis to height. Perfect for rings and bracelets.</p>
+        </a>
+
         <a href="batch.html" class="nav-card batch">
             <div class="icon">&#x2630;</div>
             <h2>Batch Conversion</h2>
             <p>Batch convert multiple DXF files to STL using profile and remover files. Process entire folders at once.</p>
+        </a>
+
+        <a href="dxf-to-buttons.html" class="nav-card buttons">
+            <div class="icon">&#x25C9;</div>
+            <h2>Button Generator</h2>
+            <p>Create ornamental buttons from mandala/rose window DXF patterns. Generates 3 sizes: 15mm, 20mm, 25mm with 4 holes.</p>
+        </a>
+
+        <a href="dxf-debug.html" class="nav-card debug">
+            <div class="icon">&#x1F50D;</div>
+            <h2>Debug Viewer</h2>
+            <p>Debug DXF to JS data conversion. View entity groups, main SVG, and mirrored points in separate tabs.</p>
         </a>
     </div>
 

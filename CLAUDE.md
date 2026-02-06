@@ -239,3 +239,6 @@ let s_f_test = `()=>{return 'test'}`
 # additional
 do NOT: 'b_is_done'
 do: 'b_done'
+
+try to not use abbreviations if not needed. if a variable has a very long name that is absolutely ok. the name contains very important information, and this is more important than being lazy and not willing to write down many characters. 
+for example 'a_o_person__filtered' is a legit variable. do not try to make up new abbreviations!

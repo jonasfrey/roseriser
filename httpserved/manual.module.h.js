@@ -12,6 +12,16 @@
 //         s_ext: p.ext
 //     };
 // };
+import { buildSimplePolygon } from "./point_calculation.module.js";
+import {
+    f_s_scad_var_declation_sketch_entities,
+    f_a_o_point__removed_duplicate,
+    f_s_scad_profile_functions_from_o_sketch,
+    f_s_scad_path_sweep_sketch,
+    f_s_scad_cylindric_sweep,
+    f_s_scad_button_generator
+} from "./scad_generation.module.h.js";
+import { f_s_svg_from_a_a_o_entity_group, f_s_svg_from_a_a_o_vec3_trn_ordered, f_s_svg_points_ordered_mirrored } from "./svg_generation.module.h.js";
 let f_o_pointwithrotation = function(
     o_vec3, 
     n_rotation_deg
@@ -22,6 +32,11 @@ let f_o_pointwithrotation = function(
     }
 }
 
+let f_o_entity_group = function(a_o_entity){
+    return {
+        a_o_entity
+    }
+}
 let f_o_vec3 = function(n_x, n_y, n_z = 0){
     return { n_x, n_y, n_z };
 };
@@ -131,7 +146,230 @@ let f_o_entity_connection = function(
         n_ang_rad_between_entities
     }
 }
+let f_o_grouped_entity_connection = function(
+    a_o_entity,
+    b_closed = false
+){
+    return {
+        a_o_entity,
+        b_closed
+    }
+}
+let f_a_a_o_entity_group_from_a_o_entity = function(
+    a_o_entity
+){
+    // there could be more than one group
+    // a entity group is an array of entities that are connected
+    // the order of the entities inside a group is also important , they should not be ordered randomly but in order like they are connected
 
+    // filter to only entities with start/end points (LINE and ARC, not CIRCLE)
+    let a_o_entity__connectable = a_o_entity.filter(
+        o => o && o.s_type !== "CIRCLE" && o.o_vec3_trn_start && o.o_vec3_trn_end
+    );
+
+    if(a_o_entity__connectable.length === 0){
+        return [];
+    }
+
+    // build adjacency map: for each entity, store connected entities
+    let o_map__adj = new Map();
+
+    for(let o_ent of a_o_entity__connectable){
+        o_map__adj.set(o_ent, []);
+    }
+
+    // find connections between entities
+    for(let n_idx_a = 0; n_idx_a < a_o_entity__connectable.length; n_idx_a++){
+        let o_ent_a = a_o_entity__connectable[n_idx_a];
+
+        for(let n_idx_b = n_idx_a + 1; n_idx_b < a_o_entity__connectable.length; n_idx_b++){
+            let o_ent_b = a_o_entity__connectable[n_idx_b];
+
+            // check all 4 combinations of start/end points
+            let b_connected =
+                f_b_vec3_equal(o_ent_a.o_vec3_trn_start, o_ent_b.o_vec3_trn_start) ||
+                f_b_vec3_equal(o_ent_a.o_vec3_trn_start, o_ent_b.o_vec3_trn_end) ||
+                f_b_vec3_equal(o_ent_a.o_vec3_trn_end, o_ent_b.o_vec3_trn_start) ||
+                f_b_vec3_equal(o_ent_a.o_vec3_trn_end, o_ent_b.o_vec3_trn_end);
+
+            if(b_connected){
+                o_map__adj.get(o_ent_a).push(o_ent_b);
+                o_map__adj.get(o_ent_b).push(o_ent_a);
+            }
+        }
+    }
+
+    // find connected components using DFS
+    let o_set__visited = new Set();
+    let a_a_o_entity_group = [];
+
+    for(let o_ent of a_o_entity__connectable){
+        if(o_set__visited.has(o_ent)){
+            continue;
+        }
+
+        // collect all entities in this connected component
+        let a_o_entity__component = [];
+        let a_o_stack = [o_ent];
+
+        while(a_o_stack.length > 0){
+            let o_current = a_o_stack.pop();
+            if(o_set__visited.has(o_current)){
+                continue;
+            }
+            o_set__visited.add(o_current);
+            a_o_entity__component.push(o_current);
+
+            for(let o_neighbor of o_map__adj.get(o_current)){
+                if(!o_set__visited.has(o_neighbor)){
+                    a_o_stack.push(o_neighbor);
+                }
+            }
+        }
+
+        // order entities in the component by connection chain
+        let a_o_entity__ordered = f_a_o_entity__ordered_by_connection(
+            a_o_entity__component,
+            o_map__adj
+        );
+        a_a_o_entity_group.push(a_o_entity__ordered);
+    }
+
+    return a_a_o_entity_group;
+}
+
+let f_a_a_o_vec3_trn_ordered = function(
+    a_a_o_entity_group,
+    n_point_per_mm = 1
+){
+    // foreach group we want to convert the entities into points
+    // the ordering and direction of the entities does matter
+
+    let a_a_o_vec3_trn = [];
+
+    for(let a_o_entity_group of a_a_o_entity_group){
+        if(a_o_entity_group.length === 0){
+            continue;
+        }
+
+        let a_o_vec3_trn__group = [];
+
+        // single entity - just use default direction
+        if(a_o_entity_group.length === 1){
+            let a_o_point = f_a_o_vec3_trn_from_o_entity_directed(
+                a_o_entity_group[0],
+                false,
+                n_point_per_mm
+            );
+            a_o_vec3_trn__group.push(...a_o_point);
+            a_a_o_vec3_trn.push(a_o_vec3_trn__group);
+            continue;
+        }
+
+        // multiple entities - determine direction based on connections
+        // track the "exit point" of the previous entity to determine next entity's direction
+        let o_vec3__prev_exit = null;
+
+        for(let n_idx = 0; n_idx < a_o_entity_group.length; n_idx++){
+            let o_ent = a_o_entity_group[n_idx];
+            let b_reversed = false;
+
+            if(n_idx === 0){
+                // first entity: determine direction based on connection to second entity
+                let o_ent_next = a_o_entity_group[1];
+
+                // check which endpoint of first entity connects to second entity
+                let b_end_connects_to_next =
+                    f_b_vec3_equal(o_ent.o_vec3_trn_end, o_ent_next.o_vec3_trn_start) ||
+                    f_b_vec3_equal(o_ent.o_vec3_trn_end, o_ent_next.o_vec3_trn_end);
+
+                // if end connects to next, traverse start->end (not reversed)
+                // if start connects to next, traverse end->start (reversed)
+                b_reversed = !b_end_connects_to_next;
+
+                o_vec3__prev_exit = b_reversed ? o_ent.o_vec3_trn_start : o_ent.o_vec3_trn_end;
+            } else {
+                // subsequent entities: entry point is where it connects to previous exit
+                let b_start_is_entry = f_b_vec3_equal(o_ent.o_vec3_trn_start, o_vec3__prev_exit);
+
+                // if start is entry, traverse start->end (not reversed)
+                // if end is entry, traverse end->start (reversed)
+                b_reversed = !b_start_is_entry;
+
+                o_vec3__prev_exit = b_reversed ? o_ent.o_vec3_trn_start : o_ent.o_vec3_trn_end;
+            }
+
+            let a_o_point = f_a_o_vec3_trn_from_o_entity_directed(
+                o_ent,
+                b_reversed,
+                n_point_per_mm
+            );
+
+            // skip first point of subsequent entities (duplicate of connection point)
+            if(n_idx > 0 && a_o_point.length > 0){
+                a_o_point = a_o_point.slice(1);
+            }
+
+            a_o_vec3_trn__group.push(...a_o_point);
+        }
+
+        a_a_o_vec3_trn.push(a_o_vec3_trn__group);
+    }
+
+    return a_a_o_vec3_trn;
+}
+let f_a_o_entity__ordered_by_connection = function(
+    a_o_entity__component,
+    o_map__adj
+){
+    if(a_o_entity__component.length <= 1){
+        return a_o_entity__component;
+    }
+
+    let o_set__component = new Set(a_o_entity__component);
+
+    // find an endpoint entity (one with only 1 connection within this component)
+    // this will be our starting point for the chain
+    let o_entity__start = null;
+
+    for(let o_ent of a_o_entity__component){
+        let n_cnt__connection = o_map__adj.get(o_ent).filter(
+            o_neighbor => o_set__component.has(o_neighbor)
+        ).length;
+
+        if(n_cnt__connection <= 1){
+            o_entity__start = o_ent;
+            break;
+        }
+    }
+
+    // if no endpoint found (closed loop), just start from first entity
+    if(!o_entity__start){
+        o_entity__start = a_o_entity__component[0];
+    }
+
+    // walk through the connection chain
+    let a_o_entity__ordered = [];
+    let o_set__visited = new Set();
+    let o_current = o_entity__start;
+
+    while(o_current && !o_set__visited.has(o_current)){
+        o_set__visited.add(o_current);
+        a_o_entity__ordered.push(o_current);
+
+        // find next unvisited neighbor in component
+        let o_next = null;
+        for(let o_neighbor of o_map__adj.get(o_current)){
+            if(o_set__component.has(o_neighbor) && !o_set__visited.has(o_neighbor)){
+                o_next = o_neighbor;
+                break;
+            }
+        }
+        o_current = o_next;
+    }
+
+    return a_o_entity__ordered;
+}
 let f_o_entity = function(
     s_type = "LINE",
     o_vec3_trn_start = null,      // start point (LINE, computed for ARC)
@@ -384,6 +622,9 @@ let f_o_sketch = function(
     a_o_vec3_trn,
     a_o_vec3_trn_and_mirrored_aty_axis,
     a_o_vec3_trn_and_mirrored_aty_axis_ordered,
+    s_svg_a_a_o_entity_group,
+    s_svg_a_a_o_vec3_trn_ordered,
+    s_svg_a_a_o_vec3_trn_ordered_mirrored,
     s_svg,
     n_scl_x,
     n_scl_y,
@@ -396,6 +637,9 @@ let f_o_sketch = function(
         a_o_vec3_trn,
         a_o_vec3_trn_and_mirrored_aty_axis,
         a_o_vec3_trn_and_mirrored_aty_axis_ordered,
+        s_svg_a_a_o_entity_group,
+        s_svg_a_a_o_vec3_trn_ordered,
+        s_svg_a_a_o_vec3_trn_ordered_mirrored,
         s_svg,
         n_scl_x,
         n_scl_y,
@@ -563,6 +807,12 @@ let f_o_sketch_from_s_path_dxf = async function(s_path){
     return o_sketch;
 }
 
+let f_a_o_vec3_ordered_graham_scan = function(a_o_vec3){
+    let points = a_o_vec3.map(p => [p.n_x, p.n_y]);
+    const ordered = buildSimplePolygon(points);
+    return ordered.map(p => f_o_vec3(p[0], p[1], 0));
+}
+
 let f_a_o_vec3_trn_orderedaroundcentroid_from_a_o_vec3_trn = function(a_o_vec3_trn) {
   if(!a_o_vec3_trn || a_o_vec3_trn.length === 0){
     return [];
@@ -582,6 +832,117 @@ let f_a_o_vec3_trn_orderedaroundcentroid_from_a_o_vec3_trn = function(a_o_vec3_t
   });
 }
 
+
+let f_a_a_o_vec3_trn_ordered_mirrored_at_mostleft_axis = function(a_a_o_vec3_trn_ordered){
+    // determine the leftmost axis
+    // remove all points (but the top and bottom) that are on the leftmost axis,
+    // mirror all points but the ones on the leftmost axis
+    // all the points should be in order so that the 'outline-path' could be walked
+
+    if(!a_a_o_vec3_trn_ordered || a_a_o_vec3_trn_ordered.length === 0){
+        return [];
+    }
+
+    let a_a_o_vec3_trn_mirrored = [];
+    let n_tolerance = 0.001;
+
+    for(let a_o_vec3_trn of a_a_o_vec3_trn_ordered){
+        if(a_o_vec3_trn.length === 0){
+            continue;
+        }
+
+        // find leftmost x value (this is our mirror axis)
+        let n_x_min = Infinity;
+        for(let o_vec3 of a_o_vec3_trn){
+            if(o_vec3.n_x < n_x_min){
+                n_x_min = o_vec3.n_x;
+            }
+        }
+
+        // separate points into on-axis and off-axis
+        let a_o_vec3__on_axis = [];
+        let a_o_vec3__off_axis = [];
+        let a_n_idx__on_axis = []; // track indices of on-axis points
+
+        for(let n_idx = 0; n_idx < a_o_vec3_trn.length; n_idx++){
+            let o_vec3 = a_o_vec3_trn[n_idx];
+            let b_on_axis = Math.abs(o_vec3.n_x - n_x_min) < n_tolerance;
+
+            if(b_on_axis){
+                a_o_vec3__on_axis.push(o_vec3);
+                a_n_idx__on_axis.push(n_idx);
+            } else {
+                a_o_vec3__off_axis.push(o_vec3);
+            }
+        }
+
+        // find top and bottom axis points (by y value)
+        let o_vec3__axis_top = null;
+        let o_vec3__axis_bottom = null;
+
+        if(a_o_vec3__on_axis.length > 0){
+            a_o_vec3__on_axis.sort((a, b) => a.n_y - b.n_y);
+            o_vec3__axis_bottom = a_o_vec3__on_axis[0];
+            o_vec3__axis_top = a_o_vec3__on_axis[a_o_vec3__on_axis.length - 1];
+        }
+
+        // create mirrored versions of off-axis points
+        // mirror formula: new_x = 2 * axis_x - old_x
+        let a_o_vec3__mirrored = [];
+        for(let o_vec3 of a_o_vec3__off_axis){
+            a_o_vec3__mirrored.push({
+                n_x: 2 * n_x_min - o_vec3.n_x,
+                n_y: o_vec3.n_y,
+                n_z: o_vec3.n_z || 0
+            });
+        }
+
+        // build the outline path:
+        // the original points go from one end to the other (e.g., bottom to top on the right side)
+        // to create a closed outline, we:
+        // 1. keep all original points (they form one side of the outline)
+        // 2. append mirrored off-axis points in reverse order (they form the other side)
+        // this creates a continuous path that can be walked as a closed loop
+
+        let a_o_vec3__outline = [];
+
+        // add original points, but filter out intermediate axis points (keep only endpoints)
+        for(let n_idx = 0; n_idx < a_o_vec3_trn.length; n_idx++){
+            let o_vec3 = a_o_vec3_trn[n_idx];
+            let b_on_axis = Math.abs(o_vec3.n_x - n_x_min) < n_tolerance;
+
+            if(b_on_axis){
+                // only keep if it's the top or bottom axis point
+                let b_is_top = o_vec3__axis_top &&
+                    Math.abs(o_vec3.n_y - o_vec3__axis_top.n_y) < n_tolerance;
+                let b_is_bottom = o_vec3__axis_bottom &&
+                    Math.abs(o_vec3.n_y - o_vec3__axis_bottom.n_y) < n_tolerance;
+
+                if(b_is_top || b_is_bottom){
+                    a_o_vec3__outline.push(o_vec3);
+                }
+                // skip intermediate axis points
+            } else {
+                a_o_vec3__outline.push(o_vec3);
+            }
+        }
+
+        // append mirrored points in reverse order to continue the path
+        a_o_vec3__mirrored.reverse();
+        a_o_vec3__outline.push(...a_o_vec3__mirrored);
+
+        /*
+        reason for removing first point
+        i looked at the points mirrored svg and could visually debug it. i see that the point wth the index 0 is the most bottom point on the mostleft axis and the mirrored points start with this , but they should not start with this point since when the right side of the profile is 'walked' and when the profile passes throught the leftmost axis this point is there again, so we have duplicate points in the data 
+        */
+        a_o_vec3__outline.shift();
+
+        a_a_o_vec3_trn_mirrored.push(a_o_vec3__outline);
+    }
+
+    return a_a_o_vec3_trn_mirrored;
+}
+
 let f_o_sketch_from_a_o_entity = function(
     a_o_entity, 
     n_n_point_per_mm = 1
@@ -590,82 +951,73 @@ let f_o_sketch_from_a_o_entity = function(
     let a_o_entity_connection = f_a_o_entity_connection_from_a_o_entity(
         a_o_entity
     );
-    
-    //end points with no connections
-    let a_o_pointwithrotation_noconnection = [];
-
-    // Collect all connected points from the connections
-    let a_o_vec3_connected = a_o_entity_connection.map(
-        o_conn => o_conn.o_trn_vec3_connected
+    let a_a_o_entity_group = f_a_a_o_entity_group_from_a_o_entity(
+        a_o_entity
     );
 
-    for(let o_entity of a_o_entity){
-        // only LINE and ARC have start/end points
-        if(o_entity.s_type !== "LINE" && o_entity.s_type !== "ARC"){
-            continue;
-        }
+    let s_svg_a_a_o_entity_group = f_s_svg_from_a_a_o_entity_group(a_a_o_entity_group, 1);
 
-        // Check start point
-        let b_start_connected = a_o_vec3_connected.some(
-            o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_start)
-        );
+    let a_a_o_vec3_trn_ordered = f_a_a_o_vec3_trn_ordered(a_a_o_entity_group);
+    let s_svg_a_a_o_vec3_trn_ordered = f_s_svg_from_a_a_o_vec3_trn_ordered(a_a_o_vec3_trn_ordered);
 
-        if(!b_start_connected){
-            // Get outward rotation at start point
-            // For arc: tangent is perpendicular to radius, so +90 for CCW direction
-            // At start, outward means backward (opposite of arc direction) = radius - 90
-            let n_rotation_deg = (o_entity.s_type === "LINE")
-                ? o_entity.n_rotation_deg_start + 180  // opposite of line direction
-                : o_entity.n_ang_deg_start - 90;       // arc tangent pointing backward
-            a_o_pointwithrotation_noconnection.push(
-                f_o_pointwithrotation(o_entity.o_vec3_trn_start, n_rotation_deg)
-            );
-        }
 
-        // Check end point
-        let b_end_connected = a_o_vec3_connected.some(
-            o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_end)
-        );
-
-        if(!b_end_connected){
-            // Get outward rotation at end point
-            // For arc: tangent is perpendicular to radius
-            // At end, outward means forward (continuing past the arc) = radius + 90
-            let n_rotation_deg = (o_entity.s_type === "LINE")
-                ? o_entity.n_rotation_deg_start  // line direction
-                : o_entity.n_ang_deg_end + 90;   // arc tangent pointing forward
-            a_o_pointwithrotation_noconnection.push(
-                f_o_pointwithrotation(o_entity.o_vec3_trn_end, n_rotation_deg)
-            );
-        }
-    }
-
-    let a_o_vec3_trn = f_a_o_vec3_trn_ordered_from_params(
-        a_o_entity,
-        a_o_entity_connection,
-        n_n_point_per_mm
+    let a_a_o_vec3_trn_ordered__mirrored = f_a_a_o_vec3_trn_ordered_mirrored_at_mostleft_axis(
+        a_a_o_vec3_trn_ordered
     );
-    let a_o_vec3_trn_xpositive = a_o_vec3_trn.filter(
-        o_vec3 => o_vec3.n_x > 0
-    );
-    let o_vec3_x0ymax = a_o_vec3_trn.filter(
-        o_vec3 => 
-            Math.abs(o_vec3.n_x) < 0.001).sort((a, b) => b.n_y - a.n_y
-    )[0];
-    let o_vec3_x0ymin = a_o_vec3_trn.filter(
-        o_vec3 => 
-            Math.abs(o_vec3.n_x) < 0.001).sort((a, b) => a.n_y - b.n_y
-    )[0];
-    let a_o_vec3_trn_and_mirrored_aty_axis = [
-        ...a_o_vec3_trn_xpositive,
-        ...a_o_vec3_trn_xpositive.slice().reverse().map(o_vec3 => f_o_vec3(-o_vec3.n_x, o_vec3.n_y, o_vec3.n_z)),
-        o_vec3_x0ymax,
-        o_vec3_x0ymin
-    ].filter(o => o !== undefined);
 
-    let a_o_vec3_trn_and_mirrored_aty_axis_ordered = f_a_o_vec3_trn_orderedaroundcentroid_from_a_o_vec3_trn(
-        a_o_vec3_trn_and_mirrored_aty_axis
+    let s_svg_a_a_o_vec3_trn_ordered_mirrored = f_s_svg_from_a_a_o_vec3_trn_ordered(
+        a_a_o_vec3_trn_ordered__mirrored
     );
+
+    // //end points with no connections
+    // let a_o_pointwithrotation_noconnection = [];
+
+    // // Collect all connected points from the connections
+    // let a_o_vec3_connected = a_o_entity_connection.map(
+    //     o_conn => o_conn.o_trn_vec3_connected
+    // );
+
+    // for(let o_entity of a_o_entity){
+    //     // only LINE and ARC have start/end points
+    //     if(o_entity.s_type !== "LINE" && o_entity.s_type !== "ARC"){
+    //         continue;
+    //     }
+
+    //     // Check start point
+    //     let b_start_connected = a_o_vec3_connected.some(
+    //         o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_start)
+    //     );
+
+    //     if(!b_start_connected){
+    //         // Get outward rotation at start point
+    //         // For arc: tangent is perpendicular to radius, so +90 for CCW direction
+    //         // At start, outward means backward (opposite of arc direction) = radius - 90
+    //         let n_rotation_deg = (o_entity.s_type === "LINE")
+    //             ? o_entity.n_rotation_deg_start + 180  // opposite of line direction
+    //             : o_entity.n_ang_deg_start - 90;       // arc tangent pointing backward
+    //         a_o_pointwithrotation_noconnection.push(
+    //             f_o_pointwithrotation(o_entity.o_vec3_trn_start, n_rotation_deg)
+    //         );
+    //     }
+
+    //     // Check end point
+    //     let b_end_connected = a_o_vec3_connected.some(
+    //         o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_end)
+    //     );
+
+    //     if(!b_end_connected){
+    //         // Get outward rotation at end point
+    //         // For arc: tangent is perpendicular to radius
+    //         // At end, outward means forward (continuing past the arc) = radius + 90
+    //         let n_rotation_deg = (o_entity.s_type === "LINE")
+    //             ? o_entity.n_rotation_deg_start  // line direction
+    //             : o_entity.n_ang_deg_end + 90;   // arc tangent pointing forward
+    //         a_o_pointwithrotation_noconnection.push(
+    //             f_o_pointwithrotation(o_entity.o_vec3_trn_end, n_rotation_deg)
+    //         );
+    //     }
+    // }
+
 
     // calculate the width and height of the sketch
     let o_vec3_max_x = a_o_vec3_trn.reduce((acc, o_vec3) => o_vec3.n_x > acc.n_x ? o_vec3 : acc, f_o_vec3(-Infinity, 0, 0));
@@ -676,7 +1028,6 @@ let f_o_sketch_from_a_o_entity = function(
     let n_scl_y = o_vec3_max_y.n_y - o_vec3_min_y.n_y;
     let n_scl_max = Math.max(n_scl_x, n_scl_y)
 
-
     let s_svg = f_s_svg_from_params(
         a_o_entity,
         a_o_entity_connection,
@@ -684,6 +1035,7 @@ let f_o_sketch_from_a_o_entity = function(
         a_o_vec3_trn,
         n_scl_max
     );
+    let a_o_vec3_ordered = f_a_o_vec3_ordered_graham_scan(a_o_vec3_trn_and_mirrored_aty_axis)
 
     return f_o_sketch(
         a_o_entity,
@@ -692,6 +1044,9 @@ let f_o_sketch_from_a_o_entity = function(
         a_o_vec3_trn,
         a_o_vec3_trn_and_mirrored_aty_axis,
         a_o_vec3_trn_and_mirrored_aty_axis_ordered,
+        s_svg_a_a_o_entity_group,
+        s_svg_a_a_o_vec3_trn_ordered,
+        s_svg_a_a_o_vec3_trn_ordered_mirrored,
         s_svg,
         n_scl_x,
         n_scl_y,
@@ -970,9 +1325,9 @@ let f_a_o_entity_connection_from_a_o_entity = function(
             if(o_ent2.s_type !== "LINE" && o_ent2.s_type !== "ARC"){continue;}
 
             // Check if this pair already has a connection recorded (in either order)
-            let b_pair_already_exists = a_o_entity_connection.some(o_dec =>
-                (o_dec.o_entity_a === o_ent && o_dec.o_entity_b === o_ent2) ||
-                (o_dec.o_entity_a === o_ent2 && o_dec.o_entity_b === o_ent)
+            let b_pair_already_exists = a_o_entity_connection.some(o_entity_connection =>
+                (o_entity_connection.o_entity_a === o_ent && o_entity_connection.o_entity_b === o_ent2) ||
+                (o_entity_connection.o_entity_a === o_ent2 && o_entity_connection.o_entity_b === o_ent)
             );
             
             if(b_pair_already_exists){continue;}
@@ -1197,8 +1552,7 @@ let f_a_o_vec3_trn_ordered_from_params = function(
     a_o_entity_connection, 
     n_point_per_mm = 1
 ){
-    a_o_entity = a_o_entity.filter(e => e && 'o_vec3_trn_start' in e);
-    let a_o_dec = a_o_entity_connection;
+    a_o_entity = a_o_entity.filter(e => e && e.o_vec3_trn_start && e.o_vec3_trn_end);
 
     if(a_o_entity.length === 0){
         return [];
@@ -1209,9 +1563,9 @@ let f_a_o_vec3_trn_ordered_from_params = function(
     for(let o_ent of a_o_entity){
         o_entity_connection_count.set(o_ent, 0);
     }
-    for(let o_dec of a_o_dec){
-        o_entity_connection_count.set(o_dec.o_entity_a, o_entity_connection_count.get(o_dec.o_entity_a) + 1);
-        o_entity_connection_count.set(o_dec.o_entity_b, o_entity_connection_count.get(o_dec.o_entity_b) + 1);
+    for(let o_entity_connection of a_o_entity_connection){
+        o_entity_connection_count.set(o_entity_connection.o_entity_a, o_entity_connection_count.get(o_entity_connection.o_entity_a) + 1);
+        o_entity_connection_count.set(o_entity_connection.o_entity_b, o_entity_connection_count.get(o_entity_connection.o_entity_b) + 1);
     }
 
     // find starting entity (one with only 1 connection = endpoint)
@@ -1236,7 +1590,7 @@ let f_a_o_vec3_trn_ordered_from_params = function(
 
     // for start entity, determine initial direction
     // check which endpoint has a connection
-    let a_start_connections = a_o_dec.filter(d => d.o_entity_a === o_current || d.o_entity_b === o_current);
+    let a_start_connections = a_o_entity_connection.filter(d => d.o_entity_a === o_current || d.o_entity_b === o_current);
     if(a_start_connections.length > 0){
         let o_conn_point = a_start_connections[0].o_trn_vec3_connected;
         // if connected at start, traverse forward (start->end)
@@ -1260,28 +1614,28 @@ let f_a_o_vec3_trn_ordered_from_params = function(
     // follow connections
     while(true){
         // find connection from current endpoint
-        let o_next_dec = null;
-        for(let o_dec of a_o_dec){
-            if(o_visited.has(o_dec.o_entity_a) && o_visited.has(o_dec.o_entity_b)){
+        let o_entity_connection__next = null;
+        for(let o_entity_connection of a_o_entity_connection){
+            if(o_visited.has(o_entity_connection.o_entity_a) && o_visited.has(o_entity_connection.o_entity_b)){
                 continue;
             }
-            if(f_b_vec3_equal(o_dec.o_trn_vec3_connected, o_prev_endpoint)){
-                o_next_dec = o_dec;
+            if(f_b_vec3_equal(o_entity_connection.o_trn_vec3_connected, o_prev_endpoint)){
+                o_entity_connection__next = o_entity_connection;
                 break;
             }
         }
 
-        if(!o_next_dec){
+        if(!o_entity_connection__next){
             break; // no more connections
         }
 
         // determine next entity
-        let o_next = o_visited.has(o_next_dec.o_entity_a) ? o_next_dec.o_entity_b : o_next_dec.o_entity_a;
+        let o_next = o_visited.has(o_entity_connection__next.o_entity_a) ? o_entity_connection__next.o_entity_b : o_entity_connection__next.o_entity_a;
 
         // determine direction for next entity
         // if connected at its start, traverse forward
         // if connected at its end, traverse reversed
-        let b_connected_at_start = f_b_vec3_equal(o_next_dec.o_trn_vec3_connected, o_next.o_vec3_trn_start);
+        let b_connected_at_start = f_b_vec3_equal(o_entity_connection__next.o_trn_vec3_connected, o_next.o_vec3_trn_start);
         let b_reversed = !b_connected_at_start; // if connected at start, go forward; if at end, go reversed
 
         a_o_ordered_entities.push(o_next);
@@ -1306,523 +1660,9 @@ let f_a_o_vec3_trn_ordered_from_params = function(
     return a_o_vec3_trn;
 }
 
-let f_s_scad_var_declation_sketch_entities = function(a_o_entity){
-    let a_o_entity_line = a_o_entity.filter(o_ent=>o_ent.s_type === "LINE");
-    let a_o_entity_arc = a_o_entity.filter(o_ent=>o_ent.s_type === "ARC");
-    let a_o_entity_circle = a_o_entity.filter(o_ent=>o_ent.s_type === "CIRCLE");
-
-    let s_scad = `
-        ${a_o_entity_line.map((o, n_idx)=>{
-            return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`
-        }).join('\n')}
-
-
-        
-        ${a_o_entity_arc.map((o, n_idx)=>{
-            return `
-                        arc_${n_idx} = [
-                [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],  // center
-                ${o.n_radius},  // radius
-                ${o.n_ang_deg_start},  // start angle (degrees)
-                ${o.n_ang_deg_end}  // end angle (degrees)
-            ];
-`
-        }).join('\n')}
-
-        function arc_to_path(arc_def, n_segments=50) =
-            let(
-                center = arc_def[0],
-                radius = arc_def[1],
-                start_angle = arc_def[2],
-                end_angle = arc_def[3],
-                // Generate arc path using BOSL2
-                arc_2d = arc(n=n_segments, r=radius, angle=[start_angle, end_angle])
-            )
-            // Translate arc to center position and add Z coordinate
-            [for (p = arc_2d) [p.x + center[0], p.y + center[1], center[2]]];
-
-        module sweep_arc(profile, arc_def, n_segments=50) {
-            let(
-                center = arc_def[0],
-                radius = arc_def[1],
-                start_angle = arc_def[2],
-                end_angle = arc_def[3]
-            )
-            translate(center)
-            path_sweep(profile, arc(n=n_segments, r=radius, angle=[start_angle, end_angle]));
-        }
-
-        ${a_o_entity_circle.map((o, n_idx)=>{
-            return `
-                circle_${n_idx} = [
-    [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],  // center
-    ${o.n_radius}  // radius
-];
-`        }).join('\n')
-    }   
-        
-        // Convert circle definition to a 3D path using BOSL2's circle() function
-    function circle_to_path(circle_def, n_segments=50) =
-        let(
-            center = circle_def[0],
-            radius = circle_def[1],
-            // Generate 2D circle and convert to 3D path
-            circle_path_3d = path3d(circle(r=radius, $fn=n_segments))
-        )
-        // Translate circle path to center position
-        [for (p = circle_path_3d) [p.x + center[0], p.y + center[1], p.z + center[2]]];
-
-    // Sweep a circle with a profile
-    module sweep_circle(profile, circle_def, n_segments=50) {
-        let(
-            center = circle_def[0],
-            radius = circle_def[1],
-            // Create 3D circular path
-            circle_path = path3d(circle(r=radius, $fn=n_segments))
-        )
-        translate(center)
-        path_sweep(profile, circle_path,closed=true);
-    }
-
-    // ===== ENTITY EXTENSION FUNCTIONS =====
-    // Extend a line definition by a given amount at start or end
-    // line_def: [[x1,y1], [x2,y2]]
-    // ext_amount: extension distance
-    // at_start: true to extend start point, false to extend end point
-    function extend_line(line_def, ext_amount, at_start=true) =
-        let(
-            p1 = line_def[0],
-            p2 = line_def[1],
-            dx = p2[0] - p1[0],
-            dy = p2[1] - p1[1],
-            len = sqrt(dx*dx + dy*dy),
-            dir_x = dx / len,
-            dir_y = dy / len
-        )
-        at_start
-            ? [[p1[0] - dir_x * ext_amount, p1[1] - dir_y * ext_amount], p2]
-            : [p1, [p2[0] + dir_x * ext_amount, p2[1] + dir_y * ext_amount]];
-
-    // Extend an arc definition by a given angle at start or end
-    // arc_def: [[cx,cy,cz], radius, start_angle, end_angle]
-    // ext_deg: extension in degrees
-    // at_start: true to extend start angle, false to extend end angle
-    function extend_arc(arc_def, ext_deg, at_start=true) =
-        let(
-            center = arc_def[0],
-            radius = arc_def[1],
-            start_angle = arc_def[2],
-            end_angle = arc_def[3]
-        )
-        at_start
-            ? [center, radius, start_angle - ext_deg, end_angle]
-            : [center, radius, start_angle, end_angle + ext_deg];
-
-
-    `
-    return s_scad;
-}
-let f_s_scad_path_sweep_sketch = function(
-    o_sketch_sweep_paths,
-    s_name_sketch_sweep_paths = "profile_sweep",
-    o_sketch_profile,
-    s_name_sketch_profile = "profile",
-    o_sketch_profile_remover, 
-    s_name_sketch_profile_remover = "profile_remover",
-    n_segments=50
-){
-    let b_run_profile_preview = false;
-    let s_scad_profile_functions = f_s_scad_profile_functions_from_o_sketch(o_sketch_profile, s_name_sketch_profile, b_run_profile_preview);
-    let s_scad_profile_functions_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch_profile_remover, s_name_sketch_profile_remover, b_run_profile_preview);
-    let s_scad_entity_defs = f_s_scad_var_declation_sketch_entities(o_sketch_sweep_paths.a_o_entity);
-
-    // Get tangent connections and calculate rotation angles
-    let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o_dec => o_dec.b_tangent);
-    let a_o_entity_connection__non_tangent_all = o_sketch_sweep_paths.a_o_entity_connection.filter(o_dec => !o_dec.b_tangent);
-
-    // Deduplicate non-tangent connections by entity pair (in either order)
-    let a_o_entity_connection__non_tangent = [];
-    for(let o_dec of a_o_entity_connection__non_tangent_all){
-        let b_duplicate = a_o_entity_connection__non_tangent.some(o_existing =>
-            (o_existing.o_entity_a === o_dec.o_entity_a && o_existing.o_entity_b === o_dec.o_entity_b) ||
-            (o_existing.o_entity_a === o_dec.o_entity_b && o_existing.o_entity_b === o_dec.o_entity_a)
-        );
-        if(!b_duplicate){
-            a_o_entity_connection__non_tangent.push(o_dec);
-        }
-    }
-    console.log(`Non-tangent connections: ${a_o_entity_connection__non_tangent_all.length} total, ${a_o_entity_connection__non_tangent.length} unique`);
-
-    // Deduplicate tangent points by position (within tolerance)
-    let n_dedup_tolerance = 0.001;
-    let a_o_tangent_unique = [];
-    for(let o_dec of a_o_entity_connection__tangent){
-        let b_duplicate = a_o_tangent_unique.some(o_existing =>
-            Math.abs(o_existing.o_trn_vec3_connected.n_x - o_dec.o_trn_vec3_connected.n_x) < n_dedup_tolerance &&
-            Math.abs(o_existing.o_trn_vec3_connected.n_y - o_dec.o_trn_vec3_connected.n_y) < n_dedup_tolerance &&
-            Math.abs(o_existing.o_trn_vec3_connected.n_z - o_dec.o_trn_vec3_connected.n_z) < n_dedup_tolerance
-        );
-        if(!b_duplicate){
-            a_o_tangent_unique.push(o_dec);
-        }
-    }
-    console.log(`Tangent points: ${a_o_entity_connection__tangent.length} total, ${a_o_tangent_unique.length} unique`)
-
-
-    let s_scad = `
-     include <BOSL2/std.scad>
-
-    ${s_scad_entity_defs}
-    ${s_scad_profile_functions}
-    ${s_scad_profile_functions_remover}
-    
-// ===== TANGENT CONNECTION POINTS =====
-// Points where entities connect tangentially, with rotation angle for joint placement
-${a_o_tangent_unique.map((o, idx) =>
-    `${s_name_sketch_sweep_paths}_tangent_point_${idx} = [${o.o_trn_vec3_connected.n_x.toFixed(6)}, ${o.o_trn_vec3_connected.n_y.toFixed(6)}, ${o.o_trn_vec3_connected.n_z.toFixed(6)}];
-${s_name_sketch_sweep_paths}_tangent_point_${idx}_angle = ${o.n_ang_deg_z_entity_a.toFixed(6)};`
-).join('\n')}
-
-// ===== UNCONNECTED ENDPOINTS =====
-// Points where entities have no connection (line/arc endpoints), with outward rotation angle
-${o_sketch_sweep_paths.a_o_pointwithrotation_noconnection.map((o, idx) =>
-    `${s_name_sketch_sweep_paths}_endpoint_${idx} = [${o.o_vec3.n_x.toFixed(6)}, ${o.o_vec3.n_y.toFixed(6)}, ${o.o_vec3.n_z.toFixed(6)}];
-${s_name_sketch_sweep_paths}_endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
-).join('\n')}
-
-// Generic module to revolve any profile around X axis
-// profile_for_revolve: 2D points array (x >= 0 for rotate_extrude)
-// profile_height: height of the profile (for Y translation)
-module revolve_profile_around_x(profile_for_revolve, profile_height, angle=90) {
-    rotate([90, 0, 180])
-    translate([0, -profile_height, 0])
-    rotate_extrude(angle=angle, convexity=10)
-    polygon(profile_for_revolve);
-}
-
-// Module to place revolve joints at all tangent connection points
-module ${s_name_sketch_sweep_paths}_place_revolve_joints_at_tangent_points(profile_for_revolve, profile_height, angle=90) {
-${a_o_tangent_unique.map((o, idx) =>
-    `    translate(${s_name_sketch_sweep_paths}_tangent_point_${idx})
-    rotate([0, 0, ${s_name_sketch_sweep_paths}_tangent_point_${idx}_angle])
-    revolve_profile_around_x(profile_for_revolve, profile_height, angle);`
-).join('\n')}
-}
-
-// Module to place revolve joints at unconnected endpoints
-module ${s_name_sketch_sweep_paths}_place_revolve_joints_at_endpoints(profile_for_revolve, profile_height, angle=180) {
-${o_sketch_sweep_paths.a_o_pointwithrotation_noconnection.map((o, idx) =>
-    `    translate(${s_name_sketch_sweep_paths}_endpoint_${idx})
-    rotate([0, 0, ${s_name_sketch_sweep_paths}_endpoint_${idx}_angle])
-    revolve_profile_around_x(profile_for_revolve, profile_height, angle);`
-).join('\n')}
-}
-
-// ===== EXTENSION PARAMETERS =====
-// Adjust these to control how far entities are extended for non-tangent joints
-line_extension_amount = ${o_sketch_profile.n_scl_max * 10}; // mm for lines
-arc_extension_degrees = 30; // degrees for arcs
-
-// ===== NON-TANGENT CONNECTION JOINTS =====
-// For non-tangent connections, we extend both entities and take their intersection
-${a_o_entity_connection__non_tangent.map((o_conn, idx) => {
-    // Find entity indices
-    let a_o_lines = o_sketch_sweep_paths.a_o_entity.filter(o => o && o.s_type === 'LINE');
-    let a_o_arcs = o_sketch_sweep_paths.a_o_entity.filter(o => o && o.s_type === 'ARC');
-
-    let n_idx_a = -1, n_idx_b = -1;
-    let s_type_a = o_conn.o_entity_a.s_type;
-    let s_type_b = o_conn.o_entity_b.s_type;
-
-    if(s_type_a === 'LINE') n_idx_a = a_o_lines.indexOf(o_conn.o_entity_a);
-    if(s_type_a === 'ARC') n_idx_a = a_o_arcs.indexOf(o_conn.o_entity_a);
-    if(s_type_b === 'LINE') n_idx_b = a_o_lines.indexOf(o_conn.o_entity_b);
-    if(s_type_b === 'ARC') n_idx_b = a_o_arcs.indexOf(o_conn.o_entity_b);
-
-    let s_entity_ref_a = s_type_a === 'LINE' ? `line_${n_idx_a}` : `arc_${n_idx_a}`;
-    let s_entity_ref_b = s_type_b === 'LINE' ? `line_${n_idx_b}` : `arc_${n_idx_b}`;
-
-    // Connection point
-    let cx = o_conn.o_trn_vec3_connected.n_x.toFixed(6);
-    let cy = o_conn.o_trn_vec3_connected.n_y.toFixed(6);
-
-    // Determine extension direction (at_start = true means connected at start point)
-    let b_a_at_start = Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
-                       Math.abs(o_conn.o_entity_a.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
-    let b_b_at_start = Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_x - o_conn.o_trn_vec3_connected.n_x) < 0.001 &&
-                       Math.abs(o_conn.o_entity_b.o_vec3_trn_start.n_y - o_conn.o_trn_vec3_connected.n_y) < 0.001;
-
-    // Generate SCAD function calls for extended entities (calculation happens in SCAD)
-    let s_extend_a = s_type_a === 'LINE'
-        ? `extend_line(${s_entity_ref_a}, line_extension_amount, ${b_a_at_start})`
-        : `extend_arc(${s_entity_ref_a}, arc_extension_degrees, ${b_a_at_start})`;
-
-    let s_extend_b = s_type_b === 'LINE'
-        ? `extend_line(${s_entity_ref_b}, line_extension_amount, ${b_b_at_start})`
-        : `extend_arc(${s_entity_ref_b}, arc_extension_degrees, ${b_b_at_start})`;
-
-    // Sweep code using the extend functions directly
-    let s_sweep_a = s_type_a === 'LINE'
-        ? `path_sweep(profile, path2d(${s_extend_a}))`
-        : `sweep_arc(profile, ${s_extend_a}, n_segments=${n_segments})`;
-
-    let s_sweep_b = s_type_b === 'LINE'
-        ? `path_sweep(profile, path2d(${s_extend_b}))`
-        : `sweep_arc(profile, ${s_extend_b}, n_segments=${n_segments})`;
-
-    return `
-// Non-tangent connection ${idx}: ${s_type_a} meets ${s_type_b} at [${cx}, ${cy}]
-module ${s_name_sketch_sweep_paths}_non_tangent_joint_${idx}(profile) {
-    intersection() {
-        ${s_sweep_a};
-        ${s_sweep_b};
-    }
-}`;
-}).join('\n')}
-
-// Module to place all non-tangent intersection joints
-module ${s_name_sketch_sweep_paths}_place_non_tangent_joints(profile) {
-${a_o_entity_connection__non_tangent.map((o, idx) =>
-    `    ${s_name_sketch_sweep_paths}_non_tangent_joint_${idx}(profile);`
-).join('\n')}
-}
-
-// Sweep pattern - sweeps profile along each path (lines, arcs, and circles)
-module ${s_name_sketch_sweep_paths}_sweep_pattern(profile) {
-    union() {
-        // Sweep lines
-        
-        ${o_sketch_sweep_paths.a_o_entity.filter(o=> o && o.s_type === 'LINE').map((o_line, n_idx)=>{
-            return `path_sweep(profile, path2d(line_${n_idx}));`;
-        }).join('\n')}
-
-        // Sweep arcs
-        ${o_sketch_sweep_paths.a_o_entity.filter(o=> o && o.s_type === 'ARC').map((o_arc, n_idx)=>{
-            return `sweep_arc(profile, arc_${n_idx}, n_segments=${n_segments});`;
-        }).join('\n')}
-
-        // Sweep circles
-        ${o_sketch_sweep_paths.a_o_entity.filter(o=> o && o.s_type === 'CIRCLE').map((o_circle, n_idx)=>{
-            return `sweep_circle(profile, circle_${n_idx}, n_segments=${n_segments});`;
-        }).join('\n')}
-
-    }
-}
-
-// Full pattern with tangent joints, endpoint joints, and non-tangent intersection joints
-// sweep_profile: 2D points array for path_sweep (typically mirroredx profile)
-// joint_profile_for_revolve: 2D points array for revolve joints (x >= 0, typically for_revolve profile)
-// joint_profile_height: height of the joint profile (for translation in revolve)
-module ${s_name_sketch_sweep_paths}_full_pattern(
-    b_make_joints = true,
-    b_make_endpoint_joints = true,
-    b_make_non_tangent_joints = true,
-    sweep_profile = ${s_name_sketch_profile}_mirroredx,
-    joint_profile_for_revolve = ${s_name_sketch_profile}_for_revolve,
-    joint_profile_height = ${s_name_sketch_profile}_height,
-    joint_angle = 90,
-    endpoint_joint_angle = 180
-    ) {
-    union() {
-        ${s_name_sketch_sweep_paths}_sweep_pattern(sweep_profile);
-        if(b_make_joints){
-            ${s_name_sketch_sweep_paths}_place_revolve_joints_at_tangent_points(joint_profile_for_revolve, joint_profile_height, joint_angle);
-        }
-        if(b_make_endpoint_joints){
-            ${s_name_sketch_sweep_paths}_place_revolve_joints_at_endpoints(joint_profile_for_revolve, joint_profile_height, endpoint_joint_angle);
-        }
-        if(b_make_non_tangent_joints){
-            ${s_name_sketch_sweep_paths}_place_non_tangent_joints(sweep_profile);
-        }
-    }
-}
-
-    ${(b_run_profile_preview) ? `` : `//`}${s_name_sketch_profile}_preview();
-
-// Render sweep pattern only
-//${s_name_sketch_sweep_paths}_sweep_pattern(profile_default(scalefactor=0.2));
-
-
-$fn = 4;
-// $fn = 32;
-module part_with_difference(s=1){
-    difference(){
-
-        color([0.,1.0, 0.5, 0.5])
-        ${s_name_sketch_sweep_paths}_full_pattern(
-            b_make_joints=true,
-            b_make_endpoint_joints=true,
-            b_make_non_tangent_joints=true,
-            sweep_profile=${s_name_sketch_profile}_mirroredx_scaled(s=s),
-            joint_profile_for_revolve=${s_name_sketch_profile}_for_revolve_scaled(s=s),
-            joint_profile_height=${s_name_sketch_profile}_height * s,
-            joint_angle=90,
-            endpoint_joint_angle=180
-        );
-
-        color([1.0,0.0, 0.0, 0.5])
-        translate([0, 0, ${s_name_sketch_profile_remover}_trn_y*s])
-        ${s_name_sketch_sweep_paths}_full_pattern(
-            b_make_joints=false,
-            b_make_endpoint_joints=false,
-            b_make_non_tangent_joints=true,
-            sweep_profile=${s_name_sketch_profile_remover}_mirroredx_scaled(s=s)
-        );
-    }
-}
-part_with_difference(s=1.0);
-    `
-    return s_scad;
-}
-
-let f_s_scad_profile_functions_from_o_sketch = function(o_sketch, s_profile_name = "profile", b_run_preview = false){
-    let a_o_vec3 = o_sketch.a_o_vec3_trn;
-
-    if(a_o_vec3.length === 0){
-        return "// No points in profile\n";
-    }
-
-    // calculate bounds
-    let n_x__min = Math.min(...a_o_vec3.map(p => p.n_x));
-    let n_x__max = Math.max(...a_o_vec3.map(p => p.n_x));
-    let n_y__min = Math.min(...a_o_vec3.map(p => p.n_y));
-    let n_y__max = Math.max(...a_o_vec3.map(p => p.n_y));
-    let n_y__center = (n_y__min + n_y__max) / 2;
-
-    // 1. Filter for x >= 0 points only (right half of profile), centered on Y
-    let a_o_xpositive__raw = a_o_vec3.filter(p => p.n_x >= -0.001);
-
-    // If no x-positive points, use all points (profile might be on left side)
-    if(a_o_xpositive__raw.length === 0){
-        a_o_xpositive__raw = a_o_vec3;
-    }
-
-    // Shift so minX of filtered points = 0, center on Y
-    let n_x__min_filtered = Math.min(...a_o_xpositive__raw.map(p => p.n_x));
-    let a_o_xpositive = a_o_xpositive__raw.map(p => ({
-        x: p.n_x - n_x__min_filtered,
-        y: p.n_y - n_y__center
-    }));
-
-    // 2. Compute mirroredx points (mirror xpositive, skip duplicates at X≈0)
-    let a_o_mirroredx = [...a_o_xpositive];
-    let n_idx__last = a_o_xpositive.length - 1;
-    let n_idx__start = Math.abs(a_o_xpositive[n_idx__last].x) < 0.0001 ? n_idx__last - 1 : n_idx__last;
-    let n_idx__end = Math.abs(a_o_xpositive[0].x) < 0.0001 ? 1 : 0;
-    for (let n_it = n_idx__start; n_it >= n_idx__end; n_it--) {
-        a_o_mirroredx.push({ x: -a_o_xpositive[n_it].x, y: a_o_xpositive[n_it].y });
-    }
-
-    // 3. Compute rotatedz points (rotate 90° CW: [x, y] -> [y, -x])
-    let a_o_rotatedz = a_o_mirroredx.map(p => ({ x: p.y, y: -p.x }));
-
-    // 4. Compute for_revolve points (rotatedz shifted so min_x = 0)
-    let n_x__min_rotated = Math.min(...a_o_rotatedz.map(p => p.x));
-    let a_o_for_revolve = a_o_rotatedz.map(p => ({ x: p.x - n_x__min_rotated, y: p.y }));
-
-    // Format point for SCAD output
-    let f_s_point = (o_p) => `[${o_p.x.toFixed(6)}, ${o_p.y.toFixed(6)}]`;
-
-    let s_scad = `
-include <BOSL2/std.scad>
-
-// Profile: ${s_profile_name}
-// Points: ${a_o_vec3.length} (xpositive), ${a_o_mirroredx.length} (mirrored)
-// Bounds: X[${n_x__min.toFixed(4)}, ${n_x__max.toFixed(4)}] Y[${n_y__min.toFixed(4)}, ${n_y__max.toFixed(4)}]
-
-// Profile bounding box
-// Width = max X * 2 (for mirrored profile)
-// Height = max Y after centering (half of total Y range)
-${s_profile_name}_width = ${((n_x__max - n_x__min) * 2).toFixed(6)};
-${s_profile_name}_height = ${((n_y__max - n_y__min) / 2).toFixed(6)};
-
-// Original DXF position (translation applied to normalize profile)
-${s_profile_name}_trn_x = ${n_x__min.toFixed(6)};
-${s_profile_name}_trn_y = ${n_y__min.toFixed(6)};
-
-// Half profile from DXF (x-positive side, right half)
-// Useful for rotate_extrude which requires x >= 0
-${s_profile_name}_xpositive = [
-${a_o_xpositive.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
-];
-
-// Full symmetric profile (mirrored from xpositive, pre-computed)
-${s_profile_name}_mirroredx = [
-${a_o_mirroredx.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
-];
-
-// Full profile rotated 90 degrees clockwise around Z axis (pre-computed)
-${s_profile_name}_rotatedz = [
-${a_o_rotatedz.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
-];
-
-// Profile prepared for rotate_extrude around X axis (pre-computed)
-${s_profile_name}_for_revolve = [
-${a_o_for_revolve.map(o_p => "    " + f_s_point(o_p)).join(",\n")}
-];
-
-// Scaled profile functions
-function ${s_profile_name}_xpositive_scaled(s=1) = [for (p = ${s_profile_name}_xpositive) [p.x * s, p.y * s]];
-function ${s_profile_name}_mirroredx_scaled(s=1) = [for (p = ${s_profile_name}_mirroredx) [p.x * s, p.y * s]];
-function ${s_profile_name}_rotatedz_scaled(s=1) = [for (p = ${s_profile_name}_rotatedz) [p.x * s, p.y * s]];
-function ${s_profile_name}_for_revolve_scaled(s=1) = [for (p = ${s_profile_name}_for_revolve) [p.x * s, p.y * s]];
-
-// Default profile (mirrored, for path_sweep)
-function profile_default(scalefactor=1) = ${s_profile_name}_mirroredx_scaled(scalefactor);
-
-// Module to revolve the profile around the X axis
-module ${s_profile_name}_revolve_around_x(scalefactor=1, angle=90) {
-    rotate([90, 0, 180])
-    translate([0, -${s_profile_name}_height * scalefactor, 0])
-    rotate_extrude(angle=angle, convexity=10)
-    polygon(${s_profile_name}_for_revolve_scaled(scalefactor));
-}
-
-// Preview module - shows all profile variants
-module ${s_profile_name}_preview(scalefactor=1, test_length=100) {
-    spacing_y = ${s_profile_name}_height * scalefactor * 4 + 10;
-    test_line = [[0, 0, 0], [test_length, 0, 0]];
-
-    // Swept profiles
-    color("red")
-    path_sweep(${s_profile_name}_mirroredx_scaled(scalefactor), test_line);
-
-    translate([0, spacing_y, 0])
-    color("green")
-    path_sweep(${s_profile_name}_xpositive_scaled(scalefactor), test_line);
-
-    translate([0, spacing_y * 2, 0])
-    color("blue")
-    path_sweep(${s_profile_name}_rotatedz_scaled(scalefactor), test_line);
-
-    // Revolve around X axis (90 degree turn)
-    translate([0, spacing_y * 3, 0])
-    color("purple")
-    ${s_profile_name}_revolve_around_x(scalefactor, 90);
-
-    // 2D profiles for reference
-    translate([test_length + 20, 0, 0]) {
-        color("red", 0.5)
-        linear_extrude(1)
-        polygon(${s_profile_name}_mirroredx_scaled(scalefactor));
-
-        translate([0, spacing_y, 0])
-        color("green", 0.5)
-        linear_extrude(1)
-        polygon(${s_profile_name}_xpositive_scaled(scalefactor));
-
-        translate([0, spacing_y * 2, 0])
-        color("blue", 0.5)
-        linear_extrude(1)
-        polygon(${s_profile_name}_rotatedz_scaled(scalefactor));
-    }
-}
-
-${(b_run_preview) ? `` : `//`}${s_profile_name}_preview();
-
-`;
-    return s_scad;
-}
+// SCAD generation functions are now in scad_generation.module.h.js
+// Imported: f_s_scad_path_sweep_sketch, f_s_scad_profile_functions_from_o_sketch,
+//           f_s_scad_cylindric_sweep, f_s_scad_button_generator
 
 // Generate SVG from sketch object with options
 let f_s_svg_from_o_sketch = function(o_sketch, o_options = {}) {
@@ -1856,8 +1696,9 @@ export {
     f_o_vec3_trn_from_a_o_entity,
     f_a_o_vec3_trn_from_o_entity_directed,
     f_a_o_vec3_trn_ordered_from_params,
-    f_s_scad_var_declation_sketch_entities,
     f_s_scad_profile_functions_from_o_sketch,
     f_s_scad_path_sweep_sketch,
+    f_s_scad_cylindric_sweep,
+    f_s_scad_button_generator,
     f_s_svg_from_o_sketch
 }

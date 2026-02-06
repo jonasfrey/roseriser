@@ -17,10 +17,11 @@ async function loadManualModule() {
 }
 
 // Directory paths
-const INPUT_DIR = "./input_dxf_files";
-const OUTPUT_DIR = "./output_stl_files";
-const SCAD_DIR = "./scad_files";
-const PROFILES_DIR = "./httpserved/dxffiles";
+const S_DIR__BATCH = "./batch_convert";
+const S_DIR__INPUT = `${S_DIR__BATCH}/input`;
+const S_DIR__OUTPUT = `${S_DIR__BATCH}/output`;
+const S_DIR__SCAD = `${S_DIR__BATCH}/scad`;
+const S_DIR__PROFILE = "./httpserved/dxffiles";
 
 // Parse DXF file content
 function parseDxf(dxfText) {
@@ -37,9 +38,9 @@ async function readDxfFile(filePath) {
 // List DXF files in input directory
 export async function listInputFiles() {
     try {
-        await ensureDir(INPUT_DIR);
+        await ensureDir(S_DIR__INPUT);
         const files = [];
-        for await (const entry of Deno.readDir(INPUT_DIR)) {
+        for await (const entry of Deno.readDir(S_DIR__INPUT)) {
             if (entry.isFile && entry.name.toLowerCase().endsWith('.dxf')) {
                 files.push(entry.name);
             }
@@ -54,9 +55,9 @@ export async function listInputFiles() {
 // List profile DXF files
 export async function listProfiles() {
     try {
-        await ensureDir(PROFILES_DIR);
+        await ensureDir(S_DIR__PROFILE);
         const files = [];
-        for await (const entry of Deno.readDir(PROFILES_DIR)) {
+        for await (const entry of Deno.readDir(S_DIR__PROFILE)) {
             if (entry.isFile && entry.name.toLowerCase().endsWith('.dxf')) {
                 files.push(entry.name);
             }
@@ -68,40 +69,45 @@ export async function listProfiles() {
     }
 }
 
-// List profile combo presets (folders starting with profile_combo_)
+// List profile combo presets (folders in profile_combinations/)
 export async function listProfileCombo() {
     try {
-        await ensureDir(PROFILES_DIR);
+        const s_combo_dir = `${S_DIR__PROFILE}/profile_combinations`;
+        await ensureDir(s_combo_dir);
         const a_o_combo = [];
-        for await (const entry of Deno.readDir(PROFILES_DIR)) {
-            if (entry.isDirectory && entry.name.startsWith('profile_combo_')) {
+
+        for await (const entry of Deno.readDir(s_combo_dir)) {
+            if (entry.isDirectory) {
                 // scan folder for profile and remover files
-                const s_folder = `${PROFILES_DIR}/${entry.name}`;
+                const s_folder = `${s_combo_dir}/${entry.name}`;
                 let s_file__profile = null;
                 let s_file__remover = null;
 
                 for await (const file of Deno.readDir(s_folder)) {
                     if (file.isFile && file.name.toLowerCase().endsWith('.dxf')) {
-                        if (file.name.includes('remover')) {
+                        const s_name_lower = file.name.toLowerCase();
+                        // Remover: starts with 'pr' or 'pr_' or contains 'remover'
+                        if (s_name_lower.startsWith('pr.') || s_name_lower.startsWith('pr_') || s_name_lower.includes('remover')) {
                             s_file__remover = file.name;
-                        } else {
+                        }
+                        // Profile: starts with 'p' but not 'pr'
+                        else if (s_name_lower.startsWith('p.') || s_name_lower.startsWith('p_')) {
                             s_file__profile = file.name;
                         }
                     }
                 }
 
                 if (s_file__profile && s_file__remover) {
-                    // create readable name from folder (profile_combo_pyramid -> Pyramid)
+                    // create readable name from folder
                     const s_name = entry.name
-                        .replace('profile_combo_', '')
                         .replace(/_/g, ' ')
                         .replace(/\b\w/g, c => c.toUpperCase());
 
                     a_o_combo.push({
                         s_name,
                         s_folder: entry.name,
-                        s_path__profile: `${entry.name}/${s_file__profile}`,
-                        s_path__remover: `${entry.name}/${s_file__remover}`
+                        s_path__profile: `profile_combinations/${entry.name}/${s_file__profile}`,
+                        s_path__remover: `profile_combinations/${entry.name}/${s_file__remover}`
                     });
                 }
             }
@@ -186,8 +192,8 @@ export async function checkOpenScad() {
 // Process a single file and yield progress events
 async function* processFile(inputFile, profilePath, removerPath, fileIndex, totalFiles) {
     const baseName = path.basename(inputFile, '.dxf');
-    const scadPath = path.join(SCAD_DIR, `${baseName}.scad`);
-    const stlPath = path.join(OUTPUT_DIR, `${baseName}.stl`);
+    const scadPath = path.join(S_DIR__SCAD, `${baseName}.scad`);
+    const stlPath = path.join(S_DIR__OUTPUT, `${baseName}.stl`);
 
     yield {
         type: 'progress',
@@ -198,7 +204,7 @@ async function* processFile(inputFile, profilePath, removerPath, fileIndex, tota
 
     try {
         // Generate SCAD
-        const inputPath = path.join(INPUT_DIR, inputFile);
+        const inputPath = path.join(S_DIR__INPUT, inputFile);
         const scadContent = await generateScadContent(inputPath, profilePath, removerPath);
 
         await Deno.writeTextFile(scadPath, scadContent);
@@ -218,9 +224,9 @@ async function* processFile(inputFile, profilePath, removerPath, fileIndex, tota
 // Main batch conversion function - yields progress events
 export async function* batchConvert(profileName, removerName) {
     // Ensure directories exist
-    await ensureDir(INPUT_DIR);
-    await ensureDir(OUTPUT_DIR);
-    await ensureDir(SCAD_DIR);
+    await ensureDir(S_DIR__INPUT);
+    await ensureDir(S_DIR__OUTPUT);
+    await ensureDir(S_DIR__SCAD);
 
     // Check OpenSCAD
     const openscadCheck = await checkOpenScad();
@@ -230,8 +236,8 @@ export async function* batchConvert(profileName, removerName) {
     }
 
     // Get profile paths
-    const profilePath = path.join(PROFILES_DIR, profileName);
-    const removerPath = path.join(PROFILES_DIR, removerName);
+    const profilePath = path.join(S_DIR__PROFILE, profileName);
+    const removerPath = path.join(S_DIR__PROFILE, removerName);
 
     // Verify profile files exist
     try {
@@ -245,7 +251,7 @@ export async function* batchConvert(profileName, removerName) {
     // List input files
     const inputFiles = await listInputFiles();
     if (inputFiles.length === 0) {
-        yield { type: 'error', file: '', message: 'No DXF files found in input_dxf_files/' };
+        yield { type: 'error', file: '', message: 'No DXF files found in batch_convert/input/' };
         return;
     }
 
@@ -277,8 +283,9 @@ export async function* batchConvert(profileName, removerName) {
 
 // Export for use in webserver
 export {
-    INPUT_DIR,
-    OUTPUT_DIR,
-    SCAD_DIR,
-    PROFILES_DIR
+    S_DIR__BATCH,
+    S_DIR__INPUT,
+    S_DIR__OUTPUT,
+    S_DIR__SCAD,
+    S_DIR__PROFILE
 };

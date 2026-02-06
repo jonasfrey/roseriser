@@ -1,0 +1,271 @@
+<!-- Debug app for DXF to JS data conversion
+    - Load a DXF file
+    - View different SVG representations via tabs:
+      - Entity Groups (s_svg_a_a_o_entity_group)
+      - Main SVG (s_svg)
+      - Points Ordered Mirrored (s_svg_points_ordered_mirrored)
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF Debug Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            padding: 16px 24px;
+            background: #16213e;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            border-bottom: 1px solid #0f3460;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+            color: #f0a04b;
+        }
+        .file-input-wrapper {
+            position: relative;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-btn {
+            background: #0f3460;
+            color: #fff;
+            border: 1px solid #f0a04b;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .file-btn:hover {
+            background: #1a4a7a;
+        }
+        .file-name {
+            margin-left: 12px;
+            color: #8899a6;
+            font-size: 14px;
+        }
+        .file-name.loaded {
+            color: #f0a04b;
+        }
+        .status {
+            margin-left: auto;
+            font-size: 13px;
+            color: #8899a6;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #16213e;
+            border-bottom: 2px solid #0f3460;
+            padding: 0 16px;
+        }
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #8899a6;
+            border: none;
+            background: transparent;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            color: #eee;
+            background: rgba(255,255,255,0.05);
+        }
+        .tab.active {
+            color: #f0a04b;
+            border-bottom-color: #f0a04b;
+        }
+        .tab.disabled {
+            color: #555;
+            cursor: not-allowed;
+        }
+        .tab-label {
+            font-weight: 500;
+        }
+        .tab-desc {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+
+        /* SVG Container */
+        .svg-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: #fff;
+            cursor: grab;
+        }
+        .svg-container:active {
+            cursor: grabbing;
+        }
+        .svg-wrapper {
+            position: absolute;
+            transform-origin: 0 0;
+        }
+        .svg-wrapper svg {
+            display: block;
+        }
+        svg {
+            height: 100% !important;
+            width: 100% !important;
+        }
+        .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+        }
+        .placeholder p {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+        .placeholder small {
+            font-size: 12px;
+            color: #bbb;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .toolbar button {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #333;
+        }
+        .toolbar button:hover {
+            background: #e8e8e8;
+        }
+        .toolbar .spacer {
+            flex: 1;
+        }
+
+        /* Info panel */
+        .info-panel {
+            padding: 8px 16px;
+            background: #0f1a2e;
+            border-top: 1px solid #0f3460;
+            font-size: 12px;
+            color: #8899a6;
+            display: flex;
+            gap: 24px;
+        }
+        .info-item {
+            display: flex;
+            gap: 6px;
+        }
+        .info-label {
+            color: #666;
+        }
+        .info-value {
+            color: #f0a04b;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DXF Debug Viewer</h1>
+        <div class="file-input-wrapper">
+            <input type="file" accept=".dxf" id="file-input">
+            <button class="file-btn" id="select-btn">Select DXF File</button>
+        </div>
+        <span class="file-name" id="file-name">No file selected</span>
+        <span class="status" id="status"></span>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="entity-groups">
+            <div class="tab-label">Entity Groups</div>
+            <div class="tab-desc">s_svg_a_a_o_entity_group</div>
+        </button>
+        <button class="tab disabled" data-tab="points-ordered">
+            <div class="tab-label">Points Ordered</div>
+            <div class="tab-desc">s_svg_a_a_o_vec3_trn_ordered</div>
+        </button>
+        <button class="tab disabled" data-tab="points-ordered-mirrored">
+            <div class="tab-label">Points Mirrored</div>
+            <div class="tab-desc">s_svg_a_a_o_vec3_trn_ordered_mirrored</div>
+        </button>
+        <button class="tab disabled" data-tab="main-svg">
+            <div class="tab-label">Main SVG</div>
+            <div class="tab-desc">s_svg</div>
+        </button>
+        <button class="tab disabled" data-tab="points-mirrored">
+            <div class="tab-label">Points Mirrored</div>
+            <div class="tab-desc">s_svg_points_ordered_mirrored</div>
+        </button>
+    </div>
+
+    <div class="svg-container" id="svg-container">
+        <div class="placeholder" id="placeholder">
+            <p>Select a DXF file to debug</p>
+            <small>Drag to pan, scroll to zoom</small>
+        </div>
+        <div class="svg-wrapper" id="svg-wrapper"></div>
+    </div>
+
+    <div class="info-panel" id="info-panel">
+        <div class="info-item">
+            <span class="info-label">Entities:</span>
+            <span class="info-value" id="info-entity-count">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Groups:</span>
+            <span class="info-value" id="info-group-count">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Connections:</span>
+            <span class="info-value" id="info-connection-count">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Points:</span>
+            <span class="info-value" id="info-point-count">-</span>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <a href="index.html" style="color: #f0a04b; text-decoration: none; font-size: 13px; padding: 6px 12px;">Home</a>
+        <button id="zoom-in">Zoom +</button>
+        <button id="zoom-out">Zoom -</button>
+        <button id="zoom-fit">Fit</button>
+        <button id="zoom-reset">1:1</button>
+        <div class="spacer"></div>
+    </div>
+
+    <script type="module" src="app-debug.js"></script>
+</body>
+</html>

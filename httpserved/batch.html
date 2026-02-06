@@ -150,23 +150,17 @@
         </p>
 
         <div class="section">
-            <h2>1. Select Profile Files</h2>
+            <h2>1. Select Profile Combination</h2>
             <div class="file-select">
-                <label>Profile DXF:</label>
-                <select id="profile-select">
+                <label>Profile:</label>
+                <select id="combo-select">
                     <option value="">-- Select Profile --</option>
-                </select>
-            </div>
-            <div class="file-select">
-                <label>Profile Remover DXF:</label>
-                <select id="remover-select">
-                    <option value="">-- Select Profile Remover --</option>
                 </select>
             </div>
         </div>
 
         <div class="section">
-            <h2>2. Input DXF Files (from input_dxf_files/)</h2>
+            <h2>2. Input DXF Files (from batch_convert/input/)</h2>
             <div class="file-list" id="input-files">
                 <div class="file-item">Loading...</div>
             </div>
@@ -194,184 +188,187 @@
     </div>
 
     <script type="module">
-        const profileSelect = document.getElementById('profile-select');
-        const removerSelect = document.getElementById('remover-select');
-        const inputFilesDiv = document.getElementById('input-files');
-        const convertBtn = document.getElementById('convert-btn');
-        const refreshBtn = document.getElementById('refresh-btn');
-        const progressBar = document.getElementById('progress-bar');
-        const statusDiv = document.getElementById('status');
-        const logDiv = document.getElementById('log');
+        const el_select__combo = document.getElementById('combo-select');
+        const el_div__input_file = document.getElementById('input-files');
+        const el_btn__convert = document.getElementById('convert-btn');
+        const el_btn__refresh = document.getElementById('refresh-btn');
+        const el_div__progress_bar = document.getElementById('progress-bar');
+        const el_div__status = document.getElementById('status');
+        const el_div__log = document.getElementById('log');
 
-        let inputFiles = [];
+        let a_s_input_file = [];
+        let a_o_combo = [];
+        let o_combo__selected = null;
 
-        function log(message, type = '') {
-            const entry = document.createElement('div');
-            entry.className = 'log-entry ' + type;
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logDiv.appendChild(entry);
-            logDiv.scrollTop = logDiv.scrollHeight;
+        function f_log(s_message, s_type = '') {
+            const el_entry = document.createElement('div');
+            el_entry.className = 'log-entry ' + s_type;
+            el_entry.textContent = `[${new Date().toLocaleTimeString()}] ${s_message}`;
+            el_div__log.appendChild(el_entry);
+            el_div__log.scrollTop = el_div__log.scrollHeight;
         }
 
-        async function loadProfileOptions() {
+        async function f_load_profile_combo() {
             try {
-                const response = await fetch('/api/list-profiles');
-                const profiles = await response.json();
+                const o_response = await fetch('/api/list-profile-combo');
+                a_o_combo = await o_response.json();
 
-                profileSelect.innerHTML = '<option value="">-- Select Profile --</option>';
-                removerSelect.innerHTML = '<option value="">-- Select Profile Remover --</option>';
+                el_select__combo.innerHTML = '<option value="">-- Select Profile --</option>';
 
-                profiles.forEach(file => {
-                    const opt1 = document.createElement('option');
-                    opt1.value = file;
-                    opt1.textContent = file;
-                    profileSelect.appendChild(opt1);
-
-                    const opt2 = document.createElement('option');
-                    opt2.value = file;
-                    opt2.textContent = file;
-                    removerSelect.appendChild(opt2);
+                a_o_combo.forEach((o_combo, n_idx) => {
+                    const el_opt = document.createElement('option');
+                    el_opt.value = n_idx;
+                    el_opt.textContent = o_combo.s_name;
+                    el_select__combo.appendChild(el_opt);
                 });
 
-                log('Loaded profile options', 'info');
-            } catch (err) {
-                log('Error loading profiles: ' + err.message, 'error');
+                f_log(`Loaded ${a_o_combo.length} profile combinations`, 'info');
+            } catch (o_err) {
+                f_log('Error loading profile combos: ' + o_err.message, 'error');
             }
         }
 
-        async function loadInputFiles() {
-            try {
-                const response = await fetch('/api/list-input-files');
-                inputFiles = await response.json();
+        function f_handle_combo_change() {
+            const s_val = el_select__combo.value;
+            if (s_val === '') {
+                o_combo__selected = null;
+            } else {
+                o_combo__selected = a_o_combo[parseInt(s_val)];
+                if (o_combo__selected) {
+                    f_log(`Selected: ${o_combo__selected.s_name}`, 'info');
+                }
+            }
+            f_update_convert_btn();
+        }
 
-                if (inputFiles.length === 0) {
-                    inputFilesDiv.innerHTML = '<div class="file-item">No DXF files found in input_dxf_files/</div>';
+        async function f_load_input_file() {
+            try {
+                const o_response = await fetch('/api/list-input-files');
+                a_s_input_file = await o_response.json();
+
+                if (a_s_input_file.length === 0) {
+                    el_div__input_file.innerHTML = '<div class="file-item">No DXF files found in batch_convert/input/</div>';
                 } else {
-                    inputFilesDiv.innerHTML = inputFiles.map(f =>
-                        `<div class="file-item" data-file="${f}">${f}</div>`
+                    el_div__input_file.innerHTML = a_s_input_file.map(s_f =>
+                        `<div class="file-item" data-file="${s_f}">${s_f}</div>`
                     ).join('');
                 }
 
-                updateConvertButton();
-                log(`Found ${inputFiles.length} input files`, 'info');
-            } catch (err) {
-                log('Error loading input files: ' + err.message, 'error');
-                inputFilesDiv.innerHTML = '<div class="file-item error">Error loading files</div>';
+                f_update_convert_btn();
+                f_log(`Found ${a_s_input_file.length} input files`, 'info');
+            } catch (o_err) {
+                f_log('Error loading input files: ' + o_err.message, 'error');
+                el_div__input_file.innerHTML = '<div class="file-item error">Error loading files</div>';
             }
         }
 
-        function updateConvertButton() {
-            const hasProfile = profileSelect.value !== '';
-            const hasRemover = removerSelect.value !== '';
-            const hasFiles = inputFiles.length > 0;
-            convertBtn.disabled = !(hasProfile && hasRemover && hasFiles);
+        function f_update_convert_btn() {
+            const b_has_combo = o_combo__selected !== null;
+            const b_has_file = a_s_input_file.length > 0;
+            el_btn__convert.disabled = !(b_has_combo && b_has_file);
         }
 
-        async function startConversion() {
-            const profile = profileSelect.value;
-            const remover = removerSelect.value;
-
-            if (!profile || !remover || inputFiles.length === 0) {
-                log('Please select profile, remover, and ensure input files exist', 'error');
+        async function f_start_conversion() {
+            if (!o_combo__selected || a_s_input_file.length === 0) {
+                f_log('Please select a profile and ensure input files exist', 'error');
                 return;
             }
 
-            convertBtn.disabled = true;
-            progressBar.style.width = '0%';
-            statusDiv.textContent = 'Starting conversion...';
-            log('Starting batch conversion...', 'info');
+            el_btn__convert.disabled = true;
+            el_div__progress_bar.style.width = '0%';
+            el_div__status.textContent = 'Starting conversion...';
+            f_log('Starting batch conversion...', 'info');
 
             try {
-                const response = await fetch('/api/batch-convert', {
+                const o_response = await fetch('/api/batch-convert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        profile: profile,
-                        remover: remover
+                        profile: o_combo__selected.s_path__profile,
+                        remover: o_combo__selected.s_path__remover
                     })
                 });
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
+                const o_reader = o_response.body.getReader();
+                const o_decoder = new TextDecoder();
+                let s_buffer = '';
 
                 while (true) {
-                    const { done, value } = await reader.read();
+                    const { done, value } = await o_reader.read();
                     if (done) break;
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop(); // Keep incomplete line in buffer
+                    s_buffer += o_decoder.decode(value, { stream: true });
+                    const a_s_line = s_buffer.split('\n');
+                    s_buffer = a_s_line.pop();
 
-                    for (const line of lines) {
-                        if (line.trim()) {
+                    for (const s_line of a_s_line) {
+                        if (s_line.trim()) {
                             try {
-                                const event = JSON.parse(line);
-                                handleEvent(event);
+                                const o_event = JSON.parse(s_line);
+                                f_handle_event(o_event);
                             } catch (e) {
-                                console.log('Parse error:', line);
+                                console.log('Parse error:', s_line);
                             }
                         }
                     }
                 }
 
-                statusDiv.textContent = 'Conversion complete!';
-                log('Batch conversion complete!', 'success');
-            } catch (err) {
-                log('Conversion error: ' + err.message, 'error');
-                statusDiv.textContent = 'Error: ' + err.message;
+                el_div__status.textContent = 'Conversion complete!';
+                f_log('Batch conversion complete!', 'success');
+            } catch (o_err) {
+                f_log('Conversion error: ' + o_err.message, 'error');
+                el_div__status.textContent = 'Error: ' + o_err.message;
             } finally {
-                convertBtn.disabled = false;
-                updateConvertButton();
+                el_btn__convert.disabled = false;
+                f_update_convert_btn();
             }
         }
 
-        function handleEvent(event) {
-            switch (event.type) {
+        function f_handle_event(o_event) {
+            switch (o_event.type) {
                 case 'progress':
-                    const pct = (event.current / event.total * 100).toFixed(0);
-                    progressBar.style.width = pct + '%';
-                    statusDiv.textContent = `Processing ${event.current}/${event.total}: ${event.file}`;
+                    const n_pct = (o_event.current / o_event.total * 100).toFixed(0);
+                    el_div__progress_bar.style.width = n_pct + '%';
+                    el_div__status.textContent = `Processing ${o_event.current}/${o_event.total}: ${o_event.file}`;
                     break;
                 case 'scad_generated':
-                    log(`SCAD generated: ${event.file}`, 'success');
-                    updateFileStatus(event.file, 'processing');
+                    f_log(`SCAD generated: ${o_event.file}`, 'success');
+                    f_update_file_status(o_event.file, 'processing');
                     break;
                 case 'stl_generated':
-                    log(`STL generated: ${event.file}`, 'success');
-                    if (event.log && event.log.trim()) {
-                        log(`OpenSCAD output:\n${event.log}`, 'info');
+                    f_log(`STL generated: ${o_event.file}`, 'success');
+                    if (o_event.log && o_event.log.trim()) {
+                        f_log(`OpenSCAD output:\n${o_event.log}`, 'info');
                     }
-                    updateFileStatus(event.file.replace('.stl', '.dxf'), 'processed');
+                    f_update_file_status(o_event.file.replace('.stl', '.dxf'), 'processed');
                     break;
                 case 'error':
-                    log(`Error: ${event.file}`, 'error');
-                    log(`${event.message}`, 'error');
-                    updateFileStatus(event.file, 'error');
+                    f_log(`Error: ${o_event.file}`, 'error');
+                    f_log(`${o_event.message}`, 'error');
+                    f_update_file_status(o_event.file, 'error');
                     break;
                 case 'complete':
-                    progressBar.style.width = '100%';
-                    log(`Completed: ${event.success} successful, ${event.failed} failed`, 'info');
+                    el_div__progress_bar.style.width = '100%';
+                    f_log(`Completed: ${o_event.success} successful, ${o_event.failed} failed`, 'info');
                     break;
             }
         }
 
-        function updateFileStatus(filename, status) {
-            const item = inputFilesDiv.querySelector(`[data-file="${filename}"]`);
-            if (item) {
-                item.className = 'file-item ' + status;
+        function f_update_file_status(s_filename, s_status) {
+            const el_item = el_div__input_file.querySelector(`[data-file="${s_filename}"]`);
+            if (el_item) {
+                el_item.className = 'file-item ' + s_status;
             }
         }
 
         // Event listeners
-        profileSelect.addEventListener('change', updateConvertButton);
-        removerSelect.addEventListener('change', updateConvertButton);
-        convertBtn.addEventListener('click', startConversion);
-        refreshBtn.addEventListener('click', loadInputFiles);
+        el_select__combo.addEventListener('change', f_handle_combo_change);
+        el_btn__convert.addEventListener('click', f_start_conversion);
+        el_btn__refresh.addEventListener('click', f_load_input_file);
 
         // Initial load
-        loadProfileOptions();
-        loadInputFiles();
+        f_load_profile_combo();
+        f_load_input_file();
     </script>
 </body>
 </html>

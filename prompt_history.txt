@@ -1,0 +1,6 @@
+i need an additional app, dxf-to-buttons
+
+it should do the same as dxf-scad , only that the dxf is expected to be a gothi rose window or mandala ornament. so it will be a big circle inside of which circal patterned elements are located. 
+then in the generated scad there will be a function to generate this pattern (sweep paths with some extras like in dxf-scad) but also in the end of the module there will be placed a rather flat approximately 2mm thick cylinder . this will be unioned with the ornament object and finally 4 button holes will be cut out)
+
+the scad module should take an argument (mm) the size of the outer radius of the biggest outer circle of the ornament . that generates the button should be looped 3 times to generate a small button, a medium button and a large button. the documentation of button sizes is in  

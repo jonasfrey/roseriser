@@ -199,6 +199,63 @@ async function handleRequest(request) {
         }
     }
 
+    // API endpoint for saving generated SCAD files with timestamp
+    if (path === "/api/save-scad" && request.method === "POST") {
+        try {
+            let o_body = await request.json();
+            let { s_scad, s_app } = o_body;
+
+            if (!s_scad || !s_app) {
+                return new Response(JSON.stringify({ error: "Missing s_scad or s_app" }), {
+                    status: 400,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                });
+            }
+
+            // Create directory if it doesn't exist
+            let s_dir = "./scad_generated";
+            try {
+                await Deno.mkdir(s_dir, { recursive: true });
+            } catch (e) {
+                if (!(e instanceof Deno.errors.AlreadyExists)) throw e;
+            }
+
+            // Generate timestamp filename: [appname]_yyyy-mm-dd-hh-mm-ss.scad
+            let o_date = new Date();
+            let s_timestamp = o_date.getFullYear() + "-" +
+                String(o_date.getMonth() + 1).padStart(2, "0") + "-" +
+                String(o_date.getDate()).padStart(2, "0") + "-" +
+                String(o_date.getHours()).padStart(2, "0") + "-" +
+                String(o_date.getMinutes()).padStart(2, "0") + "-" +
+                String(o_date.getSeconds()).padStart(2, "0");
+            let s_filename = `${s_app}_${s_timestamp}.scad`;
+            let s_path__file = `${s_dir}/${s_filename}`;
+
+            await Deno.writeTextFile(s_path__file, s_scad);
+
+            console.log(`Saved SCAD: ${s_path__file}`);
+
+            return new Response(JSON.stringify({ b_success: true, s_filename }), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: e.message }), {
+                status: 500,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+    }
+
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
         return new Response(null, {

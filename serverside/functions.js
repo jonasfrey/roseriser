@@ -148,8 +148,9 @@ o_wsmsg__upload_dxf.f_v_server_implementation = async function(o_wsmsg){
 
 // SCAD generation handler: takes dxffile IDs and generation type, generates OpenSCAD script
 o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
-    let { s_generation_type, n_id__profile, n_id__profile_remover, n_id__path, n_point_per_mm } = o_wsmsg.v_data;
+    let { s_generation_type, n_id__profile, n_id__profile_remover, n_id__path, n_point_per_mm, s_sweep_function } = o_wsmsg.v_data;
     n_point_per_mm = n_point_per_mm || 1;
+    s_sweep_function = s_sweep_function || 'path_sweep2d';
     let s_name_table = f_s_name_table__from_o_model(o_model__o_dxffile);
 
     let f_get = function(n_id){
@@ -171,15 +172,15 @@ o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
     if(s_generation_type === 'profile_revolve'){
         s_scad = f_s_scad__generate_profile_revolve(o_dxffile__profile, n_point_per_mm);
     } else if(s_generation_type === 'simple'){
-        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, false);
+        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, false, s_sweep_function);
     } else if(s_generation_type === 'simple_endpoints'){
-        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, true);
+        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, true, s_sweep_function);
     } else if(s_generation_type === 'simple_endpoints_joints'){
-        s_scad = f_s_scad__generate_simple_joints(o_dxffile__profile, f_get(n_id__path), n_point_per_mm);
+        s_scad = f_s_scad__generate_simple_joints(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, s_sweep_function);
     } else if(s_generation_type === 'simple_endpoints_remover'){
-        s_scad = f_s_scad__generate_simple_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, true);
+        s_scad = f_s_scad__generate_simple_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, true, s_sweep_function);
     } else if(s_generation_type === 'simple_remover'){
-        s_scad = f_s_scad__generate_simple_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, false);
+        s_scad = f_s_scad__generate_simple_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, false, s_sweep_function);
     } else {
         s_scad = f_s_scad__generate(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm);
     }

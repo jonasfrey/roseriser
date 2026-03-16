@@ -1357,7 +1357,7 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d'){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1373,6 +1373,8 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
 
     let n_segments = 50;
 
+    let b_3d = s_sweep_function === 'path_sweep';
+
     let s_scad = `
 include <BOSL2/std.scad>
 
@@ -1380,6 +1382,9 @@ ${s_scad_profile}
 
 // ===== PATH ENTITY DEFINITIONS =====
 ${a_o_entity_line.map((o, n_idx) => {
+    if(b_3d){
+        return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}, 0], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}, 0]];`;
+    }
     return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`;
 }).join('\n')}
 
@@ -1406,6 +1411,25 @@ endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
 ).join('\n')}
 
 // ===== SWEEP MODULES =====
+${b_3d ? `
+module sweep_arc(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    arc_path = [for (a = [start_angle : (end_angle - start_angle) / n_segments : end_angle])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, arc_path);
+}
+
+module sweep_circle(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    circle_path = [for (a = [0 : 360 / n_segments : 360 - 360 / n_segments])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, circle_path, closed=true);
+}
+` : `
 module sweep_arc_2d(profile, arc_def, n_segments=${n_segments}) {
     center = arc_def[0];
     radius = arc_def[1];
@@ -1421,6 +1445,7 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
     translate([center[0], center[1], 0])
     path_sweep2d(profile, circle(r=radius, $fn=n_segments), closed=true);
 }
+`}
 
 // ===== RENDER =====
 $fn = 32;
@@ -1428,17 +1453,21 @@ $fn = 32;
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
-        return `path_sweep2d(profile_mirroredx, line_${n_idx});`;
+        return `${s_sweep_function}(profile_mirroredx, line_${n_idx});`;
     }).join('\n    ')}
 
     // Sweep arcs
     ${a_o_entity_arc.map((o, n_idx) => {
-        return `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
+        return b_3d
+            ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
+            : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
     }).join('\n    ')}
 
     // Sweep circles
     ${a_o_entity_circle.map((o, n_idx) => {
-        return `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
+        return b_3d
+            ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
+            : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
     }).join('\n    ')}
 
     // Endpoint caps (90° revolve of profile around its X axis)
@@ -1454,7 +1483,7 @@ union() {
 
 // ===== SIMPLE SCAD GENERATION WITH REMOVER (no joints) =====
 
-let f_s_scad__generate_simple_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false){
+let f_s_scad__generate_simple_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d'){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1471,23 +1500,28 @@ let f_s_scad__generate_simple_remover = function(o_dxffile__profile, o_dxffile__
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
     let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
 
+    let b_3d = s_sweep_function === 'path_sweep';
     let n_segments = 50;
 
     let f_s_sweep_block = function(s_profile_var){
         return `
         // Sweep lines
         ${a_o_entity_line.map((o, n_idx) => {
-            return `path_sweep2d(${s_profile_var}, line_${n_idx});`;
+            return `${s_sweep_function}(${s_profile_var}, line_${n_idx});`;
         }).join('\n        ')}
 
         // Sweep arcs
         ${a_o_entity_arc.map((o, n_idx) => {
-            return `sweep_arc_2d(${s_profile_var}, arc_${n_idx});`;
+            return b_3d
+                ? `sweep_arc(${s_profile_var}, arc_${n_idx});`
+                : `sweep_arc_2d(${s_profile_var}, arc_${n_idx});`;
         }).join('\n        ')}
 
         // Sweep circles
         ${a_o_entity_circle.map((o, n_idx) => {
-            return `sweep_circle_2d(${s_profile_var}, circle_${n_idx});`;
+            return b_3d
+                ? `sweep_circle(${s_profile_var}, circle_${n_idx});`
+                : `sweep_circle_2d(${s_profile_var}, circle_${n_idx});`;
         }).join('\n        ')}`;
     };
 
@@ -1499,6 +1533,9 @@ ${s_scad_profile_remover}
 
 // ===== PATH ENTITY DEFINITIONS =====
 ${a_o_entity_line.map((o, n_idx) => {
+    if(b_3d){
+        return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}, 0], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}, 0]];`;
+    }
     return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`;
 }).join('\n')}
 
@@ -1525,6 +1562,25 @@ endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
 ).join('\n')}
 
 // ===== SWEEP MODULES =====
+${b_3d ? `
+module sweep_arc(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    arc_path = [for (a = [start_angle : (end_angle - start_angle) / n_segments : end_angle])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, arc_path);
+}
+
+module sweep_circle(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    circle_path = [for (a = [0 : 360 / n_segments : 360 - 360 / n_segments])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, circle_path, closed=true);
+}
+` : `
 module sweep_arc_2d(profile, arc_def, n_segments=${n_segments}) {
     center = arc_def[0];
     radius = arc_def[1];
@@ -1540,6 +1596,7 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
     translate([center[0], center[1], 0])
     path_sweep2d(profile, circle(r=radius, $fn=n_segments), closed=true);
 }
+`}
 
 // ===== RENDER =====
 $fn = 32;
@@ -1567,7 +1624,7 @@ ${f_s_sweep_block('profile_remover_mirroredx')}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS (endpoint revolves + connection joints, no remover) =====
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1608,6 +1665,9 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let x1 = cp.n_x + dx * n_ext;
         let y1 = cp.n_y + dy * n_ext;
 
+        if(s_sweep_function === 'path_sweep'){
+            return `path_sweep(profile_mirroredx, [[${x0}, ${y0}, 0], [${x1}, ${y1}, 0]]);`;
+        }
         return `path_sweep2d(profile_mirroredx, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
     };
 
@@ -1625,6 +1685,8 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     }`;
     }).filter(s => s).join('\n\n');
 
+    let b_3d = s_sweep_function === 'path_sweep';
+
     let s_scad = `
 include <BOSL2/std.scad>
 
@@ -1632,6 +1694,9 @@ ${s_scad_profile}
 
 // ===== PATH ENTITY DEFINITIONS =====
 ${a_o_entity_line.map((o, n_idx) => {
+    if(b_3d){
+        return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}, 0], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}, 0]];`;
+    }
     return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`;
 }).join('\n')}
 
@@ -1658,6 +1723,25 @@ endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
 ).join('\n')}
 
 // ===== SWEEP MODULES =====
+${b_3d ? `
+module sweep_arc(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    arc_path = [for (a = [start_angle : (end_angle - start_angle) / n_segments : end_angle])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, arc_path);
+}
+
+module sweep_circle(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    circle_path = [for (a = [0 : 360 / n_segments : 360 - 360 / n_segments])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, circle_path, closed=true);
+}
+` : `
 module sweep_arc_2d(profile, arc_def, n_segments=${n_segments}) {
     center = arc_def[0];
     radius = arc_def[1];
@@ -1673,6 +1757,7 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
     translate([center[0], center[1], 0])
     path_sweep2d(profile, circle(r=radius, $fn=n_segments), closed=true);
 }
+`}
 
 // ===== RENDER =====
 $fn = 32;
@@ -1680,17 +1765,21 @@ $fn = 32;
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
-        return `path_sweep2d(profile_mirroredx, line_${n_idx});`;
+        return `${s_sweep_function}(profile_mirroredx, line_${n_idx});`;
     }).join('\n    ')}
 
     // Sweep arcs
     ${a_o_entity_arc.map((o, n_idx) => {
-        return `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
+        return b_3d
+            ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
+            : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
     }).join('\n    ')}
 
     // Sweep circles
     ${a_o_entity_circle.map((o, n_idx) => {
-        return `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
+        return b_3d
+            ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
+            : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
     }).join('\n    ')}
 
     // Endpoint caps (90° revolve of profile around its X axis)

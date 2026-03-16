@@ -375,6 +375,27 @@ let o_component__dxf2scad = {
                     },
                 ],
             },
+            {
+                s_tag: 'div',
+                class: 'o_dxf2scad__upload_row',
+                'v-if': "s_generation_type !== 'profile_revolve'",
+                a_o: [
+                    {
+                        s_tag: 'div',
+                        class: 'o_dxf2scad__upload_label',
+                        innerText: 'Sweep function',
+                    },
+                    {
+                        s_tag: 'select',
+                        'v-model': 's_sweep_function',
+                        class: 'o_dxf2scad__select',
+                        a_o: [
+                            { s_tag: 'option', value: 'path_sweep2d', innerText: 'path_sweep2d (2D profile)' },
+                            { s_tag: 'option', value: 'path_sweep', innerText: 'path_sweep (3D, faster, no gaps)' },
+                        ],
+                    },
+                ],
+            },
             // Upload sections
             {
                 s_tag: 'div',
@@ -662,6 +683,7 @@ let o_component__dxf2scad = {
             s_generation_type: 'simple',
             a_o_generation_type,
             n_point_per_mm: 1,
+            s_sweep_function: 'path_sweep2d',
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
@@ -767,6 +789,7 @@ let o_component__dxf2scad = {
                         n_id__profile_remover: o_self.n_id__profile_remover,
                         n_id__path: o_self.n_id__path,
                         n_point_per_mm: o_self.n_point_per_mm,
+                        s_sweep_function: o_self.s_sweep_function,
                     })
                 );
 

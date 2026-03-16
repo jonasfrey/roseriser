@@ -8,7 +8,7 @@ import { s_db_create, s_db_read, s_db_update, s_db_delete } from '../localhost/r
 import { a_o_wsmsg, f_o_model_instance, f_s_name_table__from_o_model, o_model__o_fsnode, o_model__o_utterance, o_model__o_dxffile, o_wsmsg__deno_copy_file, o_wsmsg__deno_mkdir, o_wsmsg__deno_stat, o_wsmsg__f_a_o_fsnode, o_wsmsg__f_delete_table_data, o_wsmsg__f_v_crud__indb, o_wsmsg__logmsg, o_wsmsg__set_state_data, o_wsmsg__syncdata, o_wsmsg__upload_dxf, o_wsmsg__generate_scad } from '../localhost/constructors.js';
 import { f_v_crud__indb, f_db_delete_table_data } from './database_functions.js';
 import { f_o_uttdatainfo } from './cli_functions.js';
-import { f_o_result__upload_dxf, f_s_scad__generate, f_s_scad__generate_simple, f_s_scad__generate_simple_remover, f_s_scad__generate_simple_joints, f_s_scad__generate_profile_revolve } from './dxf_functions.js';
+import { f_o_result__upload_dxf, f_s_scad__generate, f_s_scad__generate_simple, f_s_scad__generate_simple_remover, f_s_scad__generate_simple_joints, f_s_scad__generate_simple_joints_remover, f_s_scad__generate_profile_revolve } from './dxf_functions.js';
 
 let f_a_o_fsnode = async function(
     s_path,
@@ -177,6 +177,8 @@ o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
         s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, true, s_sweep_function);
     } else if(s_generation_type === 'simple_endpoints_joints'){
         s_scad = f_s_scad__generate_simple_joints(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, s_sweep_function);
+    } else if(s_generation_type === 'simple_endpoints_joints_remover'){
+        s_scad = f_s_scad__generate_simple_joints_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, s_sweep_function);
     } else if(s_generation_type === 'simple_endpoints_remover'){
         s_scad = f_s_scad__generate_simple_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, true, s_sweep_function);
     } else if(s_generation_type === 'simple_remover'){

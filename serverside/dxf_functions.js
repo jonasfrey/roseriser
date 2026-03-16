@@ -1796,6 +1796,197 @@ ${s_joints}
     return s_scad;
 };
 
+// ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
+
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
+    let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
+    let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
+    let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
+
+    let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
+    let o_sketch__profile_remover = f_o_sketch_from_a_o_entity(a_o_entity__profile_remover, n_point_per_mm);
+    let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
+    let s_scad_profile_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile_remover, "profile_remover");
+
+    let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
+    let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
+    let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
+
+    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
+    let a_o_connection = o_sketch__path.a_o_entity_connection;
+
+    let a_x = o_sketch__profile.a_o_vec3_trn.map(p => p.n_x);
+    let a_y = o_sketch__profile.a_o_vec3_trn.map(p => p.n_y);
+    let n_profile_width = Math.max(...a_x) - Math.min(...a_x);
+    let n_profile_height = Math.max(...a_y) - Math.min(...a_y);
+    let n_ext = Math.max(n_profile_width, n_profile_height) * 3;
+
+    let b_3d = s_sweep_function === 'path_sweep';
+    let n_segments = 50;
+
+    // Helper: generate extension sweep for joints using a given profile variable
+    let f_s_extension_sweep = function(s_profile_var, o_conn, o_vec3_dir){
+        let cp = o_conn.o_trn_vec3_connected;
+        let dx = -o_vec3_dir.n_x;
+        let dy = -o_vec3_dir.n_y;
+        let x0 = cp.n_x, y0 = cp.n_y;
+        let x1 = cp.n_x + dx * n_ext, y1 = cp.n_y + dy * n_ext;
+        if(b_3d){
+            return `${s_sweep_function}(${s_profile_var}, [[${x0}, ${y0}, 0], [${x1}, ${y1}, 0]]);`;
+        }
+        return `${s_sweep_function}(${s_profile_var}, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
+    };
+
+    // Generate joint blocks for a given profile variable
+    let f_s_joints = function(s_profile_var){
+        return a_o_connection.map((o_conn, n_idx) => {
+            if(o_conn.b_tangent) return '';
+            let s_ext_a = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_a);
+            let s_ext_b = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_b);
+            return `        // Joint ${n_idx}
+        intersection() {
+            ${s_ext_a}
+            ${s_ext_b}
+        }`;
+        }).filter(s => s).join('\n\n');
+    };
+
+    // Helper: sweep block for a given profile variable
+    let f_s_sweep_block = function(s_profile_var){
+        return `
+        // Sweep lines
+        ${a_o_entity_line.map((o, n_idx) => {
+            return `${s_sweep_function}(${s_profile_var}, line_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep arcs
+        ${a_o_entity_arc.map((o, n_idx) => {
+            return b_3d
+                ? `sweep_arc(${s_profile_var}, arc_${n_idx});`
+                : `sweep_arc_2d(${s_profile_var}, arc_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep circles
+        ${a_o_entity_circle.map((o, n_idx) => {
+            return b_3d
+                ? `sweep_circle(${s_profile_var}, circle_${n_idx});`
+                : `sweep_circle_2d(${s_profile_var}, circle_${n_idx});`;
+        }).join('\n        ')}`;
+    };
+
+    let s_scad = `
+include <BOSL2/std.scad>
+
+${s_scad_profile}
+${s_scad_profile_remover}
+
+// ===== PATH ENTITY DEFINITIONS =====
+${a_o_entity_line.map((o, n_idx) => {
+    if(b_3d){
+        return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}, 0], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}, 0]];`;
+    }
+    return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`;
+}).join('\n')}
+
+${a_o_entity_arc.map((o, n_idx) => {
+    return `arc_${n_idx} = [
+    [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],
+    ${o.n_radius},
+    ${o.n_ang_deg_start},
+    ${o.n_ang_deg_end}
+];`;
+}).join('\n')}
+
+${a_o_entity_circle.map((o, n_idx) => {
+    return `circle_${n_idx} = [
+    [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],
+    ${o.n_radius}
+];`;
+}).join('\n')}
+
+// ===== UNCONNECTED ENDPOINTS =====
+${a_o_endpoint.map((o, idx) =>
+    `endpoint_${idx} = [${o.o_vec3.n_x.toFixed(6)}, ${o.o_vec3.n_y.toFixed(6)}, ${(o.o_vec3.n_z || 0).toFixed(6)}];
+endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
+).join('\n')}
+
+// ===== SWEEP MODULES =====
+${b_3d ? `
+module sweep_arc(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    arc_path = [for (a = [start_angle : (end_angle - start_angle) / n_segments : end_angle])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, arc_path);
+}
+
+module sweep_circle(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    circle_path = [for (a = [0 : 360 / n_segments : 360 - 360 / n_segments])
+        [center[0] + radius * cos(a), center[1] + radius * sin(a), 0]];
+    path_sweep(profile, circle_path, closed=true);
+}
+` : `
+module sweep_arc_2d(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    translate([center[0], center[1], 0])
+    path_sweep2d(profile, arc(n=n_segments, r=radius, angle=[start_angle, end_angle]));
+}
+
+module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    translate([center[0], center[1], 0])
+    path_sweep2d(profile, circle(r=radius, $fn=n_segments), closed=true);
+}
+`}
+
+// ===== RENDER =====
+$fn = 32;
+
+difference() {
+    // Main shape: sweeps + endpoint caps + joints
+    union() {
+${f_s_sweep_block('profile_mirroredx')}
+
+        // Endpoint caps
+        ${a_o_endpoint.map((o, idx) => {
+            return `translate(endpoint_${idx})
+        rotate([0, 0, endpoint_${idx}_angle])
+        profile_endpoint_cap();`;
+        }).join('\n        ')}
+
+        // Connection point joints
+${f_s_joints('profile_mirroredx')}
+    }
+
+    // Remover: same geometry but with remover profile, offset to keep DXF-relative position
+    translate([0, 0, profile_remover_trn_y])
+    union() {
+${f_s_sweep_block('profile_remover_mirroredx')}
+
+        // Endpoint caps (remover)
+        ${a_o_endpoint.map((o, idx) => {
+            return `translate(endpoint_${idx})
+        rotate([0, 0, endpoint_${idx}_angle])
+        profile_remover_endpoint_cap();`;
+        }).join('\n        ')}
+
+        // Connection point joints (remover)
+${f_s_joints('profile_remover_mirroredx')}
+    }
+}
+`;
+    return s_scad;
+};
+
 // ===== FULL SCAD GENERATION (with joints and remover) =====
 
 let f_s_scad__generate = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1){
@@ -1834,5 +2025,6 @@ export {
     f_s_scad__generate_simple,
     f_s_scad__generate_simple_remover,
     f_s_scad__generate_simple_joints,
+    f_s_scad__generate_simple_joints_remover,
     f_s_scad__generate_profile_revolve,
 };

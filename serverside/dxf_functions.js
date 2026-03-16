@@ -279,7 +279,9 @@ let f_a_o_entity_connection_from_a_o_entity = function(a_o_entity){
                     let n_dot = f_n_dot_from_o_vec3(o_vec3_dir_a, o_vec3_dir_b);
                     n_dot = Math.max(-1, Math.min(1, n_dot));
                     let n_ang_rad_between = Math.acos(n_dot);
-                    let b_tangent = n_ang_rad_between < (15 * Math.PI / 180);
+                    // Directions point INTO their entities from the connection,
+                    // so tangent entities have ~180° between them (opposite directions)
+                    let b_tangent = n_ang_rad_between > (Math.PI - 15 * Math.PI / 180);
 
                     let n_avg_x = (o_vec3_dir_a.n_x + o_vec3_dir_b.n_x) / 2;
                     let n_avg_y = (o_vec3_dir_a.n_y + o_vec3_dir_b.n_y) / 2;
@@ -1357,53 +1359,65 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-// Extend entities slightly at connection points to prevent tiny gaps
-let f_a_o_entity_extended_at_connections = function(a_o_entity, a_o_connection){
-    let n_line_ext = 0.01; // mm extension for lines
-    let n_arc_ext_deg = 0.5; // degree extension for arcs
+// Extend entities at connection points to prevent floating-point gaps.
+// For tangent connections: tiny extension to close precision gaps.
+// For non-tangent connections: small overlap proportional to profile size,
+//   capped to avoid creating unwanted protruding geometry.
+//   The intersection joint handles the actual gap filling.
+let f_a_o_entity_extended_at_connections = function(a_o_entity, a_o_connection, n_profile_half_width){
+    // Map each entity endpoint to its computed extension amount
+    let o_map_ext = new Map();
 
-    // Build a set of connection point coordinates per entity endpoint
-    let o_map_connected = new Map(); // key: entity index + '_start'/'_end', value: true
     for(let o_conn of a_o_connection){
+        // For tangent connections: just close floating-point gaps
+        // For non-tangent: small overlap (the intersection joint fills the real gap)
+        let n_ext = o_conn.b_tangent
+            ? n_profile_half_width * 0.01
+            : n_profile_half_width * 0.1;
+
         for(let n_idx = 0; n_idx < a_o_entity.length; n_idx++){
             let o_ent = a_o_entity[n_idx];
             if(o_ent.s_type === 'CIRCLE') continue;
             if(o_ent.o_vec3_trn_start && f_b_vec3_equal(o_ent.o_vec3_trn_start, o_conn.o_trn_vec3_connected)){
-                o_map_connected.set(n_idx + '_start', true);
+                let s_key = n_idx + '_start';
+                o_map_ext.set(s_key, Math.max(o_map_ext.get(s_key) || 0, n_ext));
             }
             if(o_ent.o_vec3_trn_end && f_b_vec3_equal(o_ent.o_vec3_trn_end, o_conn.o_trn_vec3_connected)){
-                o_map_connected.set(n_idx + '_end', true);
+                let s_key = n_idx + '_end';
+                o_map_ext.set(s_key, Math.max(o_map_ext.get(s_key) || 0, n_ext));
             }
         }
     }
 
     return a_o_entity.map((o_ent, n_idx) => {
         let o = JSON.parse(JSON.stringify(o_ent)); // deep clone
-        let b_start_connected = o_map_connected.has(n_idx + '_start');
-        let b_end_connected = o_map_connected.has(n_idx + '_end');
+        let n_ext_start = o_map_ext.get(n_idx + '_start');
+        let n_ext_end = o_map_ext.get(n_idx + '_end');
 
         if(o.s_type === 'LINE'){
-            if(b_start_connected && o.o_vec3_direction){
+            if(n_ext_start && o.o_vec3_direction){
                 o.o_vec3_trn_start = f_o_vec3(
-                    o.o_vec3_trn_start.n_x - o.o_vec3_direction.n_x * n_line_ext,
-                    o.o_vec3_trn_start.n_y - o.o_vec3_direction.n_y * n_line_ext,
+                    o.o_vec3_trn_start.n_x - o.o_vec3_direction.n_x * n_ext_start,
+                    o.o_vec3_trn_start.n_y - o.o_vec3_direction.n_y * n_ext_start,
                     o.o_vec3_trn_start.n_z
                 );
             }
-            if(b_end_connected && o.o_vec3_direction){
+            if(n_ext_end && o.o_vec3_direction){
                 o.o_vec3_trn_end = f_o_vec3(
-                    o.o_vec3_trn_end.n_x + o.o_vec3_direction.n_x * n_line_ext,
-                    o.o_vec3_trn_end.n_y + o.o_vec3_direction.n_y * n_line_ext,
+                    o.o_vec3_trn_end.n_x + o.o_vec3_direction.n_x * n_ext_end,
+                    o.o_vec3_trn_end.n_y + o.o_vec3_direction.n_y * n_ext_end,
                     o.o_vec3_trn_end.n_z
                 );
             }
         }
         if(o.s_type === 'ARC'){
-            if(b_start_connected){
-                o.n_ang_deg_start -= n_arc_ext_deg;
+            if(n_ext_start){
+                let n_ext_deg = (n_ext_start / o_ent.n_radius) * (180 / Math.PI);
+                o.n_ang_deg_start -= n_ext_deg;
             }
-            if(b_end_connected){
-                o.n_ang_deg_end += n_arc_ext_deg;
+            if(n_ext_end){
+                let n_ext_deg = (n_ext_end / o_ent.n_radius) * (180 / Math.PI);
+                o.n_ang_deg_end += n_ext_deg;
             }
         }
         return o;
@@ -1419,7 +1433,8 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
     let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
 
     // Extend entities slightly at connection points to prevent tiny gaps
-    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+    let n_profile_half_width = o_sketch__profile.n_scl_x || 1;
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection, n_profile_half_width);
 
     let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");
@@ -1523,7 +1538,8 @@ let f_s_scad__generate_simple_remover = function(o_dxffile__profile, o_dxffile__
     let s_scad_profile_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile_remover, "profile_remover");
 
     // Extend entities slightly at connection points to prevent tiny gaps
-    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+    let n_profile_half_width = o_sketch__profile.n_scl_x || 1;
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection, n_profile_half_width);
 
     let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");
@@ -1635,7 +1651,8 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
 
     // Extend entities slightly at connection points to prevent tiny gaps
-    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+    let n_profile_half_width = o_sketch__profile.n_scl_x || 1;
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection, n_profile_half_width);
 
     let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");

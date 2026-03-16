@@ -1,0 +1,275 @@
+<!-- about this 'app'
+ 
+
+one can load a dxf file. 
+the data from this gets converted to valuable data for javascript
+also important data like connections between entities is calculated and stored
+then the data will be converted to points 
+finally a scad script is being generated
+this script can be used to generate solid and correct 3d models
+
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF to SVG Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            padding: 16px 24px;
+            background: #16213e;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            border-bottom: 1px solid #0f3460;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+            color: #4cc9f0;
+        }
+        .file-input-wrapper {
+            position: relative;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-btn {
+            background: #0f3460;
+            color: #fff;
+            border: 1px solid #4cc9f0;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .file-btn:hover {
+            background: #1a4a7a;
+        }
+        .file-name {
+            margin-left: 12px;
+            color: #8899a6;
+            font-size: 14px;
+        }
+        .file-name.loaded {
+            color: #4cc9f0;
+        }
+        .status {
+            margin-left: auto;
+            font-size: 13px;
+            color: #8899a6;
+        }
+        .svg-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: #fff;
+            cursor: grab;
+        }
+        .svg-container:active {
+            cursor: grabbing;
+        }
+        .svg-wrapper {
+            position: absolute;
+            transform-origin: 0 0;
+        }
+        .svg-wrapper svg {
+            display: block;
+        }
+        svg{
+            height: 100% !important;
+            width:100% !important;
+        }
+        .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+        }
+        .placeholder p {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+        .placeholder small {
+            font-size: 12px;
+            color: #bbb;
+        }
+        .toolbar {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .toolbar button {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #333;
+        }
+        .toolbar button:hover {
+            background: #e8e8e8;
+        }
+        .toolbar .spacer {
+            flex: 1;
+        }
+        .toolbar .download-btn {
+            background: #4cc9f0;
+            border-color: #4cc9f0;
+            color: #000;
+        }
+        .toolbar .download-btn:hover {
+            background: #3ab8df;
+        }
+        .toolbar .download-btn:disabled {
+            background: #ccc;
+            border-color: #ccc;
+            cursor: not-allowed;
+        }
+        .options-panel {
+            padding: 10px 16px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .option-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .option-group label {
+            font-size: 12px;
+            color: #8899a6;
+            text-transform: uppercase;
+        }
+        .toggle-group {
+            display: flex;
+            gap: 8px;
+        }
+        .toggle-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .toggle-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .toggle-item span {
+            font-size: 13px;
+            color: #eee;
+            cursor: pointer;
+        }
+        .toggle-item span.entity { color: rgba(0, 180, 0, 1); }
+        .toggle-item span.point { color: rgba(220, 0, 0, 1); }
+        .toggle-item span.angle { color: rgba(0, 100, 255, 1); }
+        .toggle-item span.bbox { color: rgba(128, 128, 128, 1); }
+        .toggle-item span.legend { color: #aaa; }
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider-group input[type="range"] {
+            width: 100px;
+            cursor: pointer;
+        }
+        .slider-group .slider-value {
+            font-size: 13px;
+            color: #4cc9f0;
+            min-width: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DXF to SVG</h1>
+        <div class="file-input-wrapper">
+            <input type="file" accept=".dxf" id="file-input">
+            <button class="file-btn" id="select-btn">Select DXF File</button>
+        </div>
+        <span class="file-name" id="file-name">No file selected</span>
+        <span class="status" id="status"></span>
+    </div>
+
+    <div class="options-panel">
+        <div class="option-group">
+            <label>Show:</label>
+            <div class="toggle-group">
+                <div class="toggle-item">
+                    <input type="checkbox" id="toggle-entity" checked>
+                    <span class="entity" onclick="document.getElementById('toggle-entity').click()">Entities</span>
+                </div>
+                <div class="toggle-item">
+                    <input type="checkbox" id="toggle-point" checked>
+                    <span class="point" onclick="document.getElementById('toggle-point').click()">Points</span>
+                </div>
+                <div class="toggle-item">
+                    <input type="checkbox" id="toggle-angle" checked>
+                    <span class="angle" onclick="document.getElementById('toggle-angle').click()">Angles</span>
+                </div>
+                <div class="toggle-item">
+                    <input type="checkbox" id="toggle-bbox" checked>
+                    <span class="bbox" onclick="document.getElementById('toggle-bbox').click()">BBox</span>
+                </div>
+                <div class="toggle-item">
+                    <input type="checkbox" id="toggle-legend" checked>
+                    <span class="legend" onclick="document.getElementById('toggle-legend').click()">Legend</span>
+                </div>
+            </div>
+        </div>
+        <div class="option-group">
+            <label>Base Size:</label>
+            <div class="slider-group">
+                <input type="range" id="slider-base-size" min="0.5" max="5" step="0.5" value="2">
+                <span class="slider-value" id="base-size-value">2</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="svg-container" id="svg-container">
+        <div class="placeholder" id="placeholder">
+            <p>Select a DXF file to preview</p>
+            <small>Drag to pan, scroll to zoom</small>
+        </div>
+        <div class="svg-wrapper" id="svg-wrapper"></div>
+    </div>
+
+    <div class="toolbar">
+        <a href="index.html" style="color: #4cc9f0; text-decoration: none; font-size: 13px; padding: 6px 12px;">Home</a>
+        <button id="zoom-in">Zoom +</button>
+        <button id="zoom-out">Zoom -</button>
+        <button id="zoom-fit">Fit</button>
+        <button id="zoom-reset">1:1</button>
+        <div class="spacer"></div>
+        <button class="download-btn" id="download-svg" disabled>Download SVG</button>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

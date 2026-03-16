@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roseriser - DXF Tools</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        h1 {
+            font-size: 48px;
+            font-weight: 300;
+            color: #4cc9f0;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .subtitle {
+            font-size: 18px;
+            color: #8899a6;
+            margin-bottom: 60px;
+            text-align: center;
+        }
+        .nav-container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 1300px;
+        }
+        .nav-card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 12px;
+            padding: 32px;
+            width: 280px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .nav-card:hover {
+            border-color: #4cc9f0;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(76, 201, 240, 0.15);
+        }
+        .nav-card .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .nav-card h2 {
+            font-size: 20px;
+            font-weight: 500;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+        .nav-card p {
+            font-size: 14px;
+            color: #8899a6;
+            line-height: 1.5;
+        }
+        .nav-card.svg .icon { color: #4ade80; }
+        .nav-card.scad .icon { color: #f472b6; }
+        .nav-card.cylinder .icon { color: #60a5fa; }
+        .nav-card.batch .icon { color: #fbbf24; }
+        .nav-card.buttons .icon { color: #c084fc; }
+        .nav-card.debug .icon { color: #f0a04b; }
+        footer {
+            margin-top: 60px;
+            font-size: 13px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Roseriser</h1>
+    <p class="subtitle">DXF Conversion Tools</p>
+
+    <div class="nav-container">
+        <a href="unified.html" class="nav-card" style="border-color: #f0a04b; width: 280px;">
+            <div class="icon" style="color: #f0a04b;">&#x2B50;</div>
+            <h2>DXF Parser</h2>
+            <p>Load a single DXF file, view all SVG debug views at once, then categorize and save it as path, profile, or remover.</p>
+        </a>
+
+        <a href="scad-generator.html" class="nav-card" style="border-color: #4cc9f0; width: 280px;">
+            <div class="icon" style="color: #4cc9f0;">&#x2B22;</div>
+            <h2>SCAD Generator</h2>
+            <p>Pick from saved DXFs to generate Path Sweep, Cylindric Sweep, and Button SCAD code. Auto-links remover to profile.</p>
+        </a>
+
+        <a href="dxf-svg.html" class="nav-card svg">
+            <div class="icon">&#x2B1C;</div>
+            <h2>DXF to SVG</h2>
+            <p>Preview and convert DXF files to SVG format with visualization options for entities, points, angles and bounding boxes.</p>
+        </a>
+
+        <a href="dxf-scad.html" class="nav-card scad">
+            <div class="icon">&#x2B22;</div>
+            <h2>DXF to SCAD</h2>
+            <p>Convert DXF sketch paths with profiles to OpenSCAD code. Includes Monaco editor, 2D/3D preview and STL export.</p>
+        </a>
+
+        <a href="dxf-scad-cylinder.html" class="nav-card cylinder">
+            <div class="icon">&#x25EF;</div>
+            <h2>Cylindric Sweep</h2>
+            <p>Wrap 2D sketch paths around a cylinder. X-axis maps to angle, Y-axis to height. Perfect for rings and bracelets.</p>
+        </a>
+
+        <a href="batch.html" class="nav-card batch">
+            <div class="icon">&#x2630;</div>
+            <h2>Batch Conversion</h2>
+            <p>Batch convert multiple DXF files to STL using profile and remover files. Process entire folders at once.</p>
+        </a>
+
+        <a href="dxf-to-buttons.html" class="nav-card buttons">
+            <div class="icon">&#x25C9;</div>
+            <h2>Button Generator</h2>
+            <p>Create ornamental buttons from mandala/rose window DXF patterns. Generates 3 sizes: 15mm, 20mm, 25mm with 4 holes.</p>
+        </a>
+
+        <a href="dxf-debug.html" class="nav-card debug">
+            <div class="icon">&#x1F50D;</div>
+            <h2>Debug Viewer</h2>
+            <p>Debug DXF to JS data conversion. View entity groups, main SVG, and mirrored points in separate tabs.</p>
+        </a>
+    </div>
+
+    <footer>Roseriser DXF Tools</footer>
+</body>
+</html>

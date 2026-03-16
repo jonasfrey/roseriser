@@ -1,0 +1,27 @@
+Common coat button sizes:
+
+18L (11.5mm) - Small coat buttons
+20L (12.7mm) - Light jackets, blazers
+24L (15mm) - Standard suit jacket/blazer buttons
+28L (18mm) - Overcoats, heavier jackets
+32L (20mm) - Large overcoat buttons
+36L (23mm) - Extra large coat buttons
+40L-45L (25-28mm) - Statement or decorative coat buttons
+Standard hole configurations:
+
+Most coat buttons use 2-hole or 4-hole designs:
+
+2-hole buttons: Holes typically spaced 3-5mm apart
+4-hole buttons: Holes arranged in a square pattern, usually 3-5mm between adjacent holes
+Shank buttons: No visible holes - have a protruding loop on the back instead
+Hole diameter is typically 1.5-2mm for most coat buttons, though this can vary based on button size and intended thread thickness.
+
+For 3D printing considerations: If you're designing buttons to print, you might want to:
+
+Start with 24L (15mm) as a versatile standard size
+Use 2mm hole diameter as a safe starting point
+Space holes 4mm apart for stability
+Consider adding a slight countersink to the holes for thread comfort
+Test shank-style designs as an alternative - these can be more elegant for gothic-themed items
+Are you thinking of creating a specific style of button, perhaps with gothic tracery or architectural details?
+

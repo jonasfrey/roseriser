@@ -313,6 +313,7 @@ let a_o_generation_type = [
     { s_value: 'profile_revolve', s_label: 'Profile endpoint revolve — profile revolved around X axis' },
     { s_value: 'simple', s_label: 'Simple — all entities, no endpoint revolves, no joints, no remover' },
     { s_value: 'simple_endpoints', s_label: 'Simple — all entities, endpoint revolves, no joints, no remover' },
+    { s_value: 'simple_endpoints_joints', s_label: 'Simple — all entities, endpoint revolves, joints, no remover' },
     { s_value: 'simple_endpoints_remover', s_label: 'Simple — all entities, endpoint revolves, remover, no joints' },
     { s_value: 'simple_remover', s_label: 'Simple — all entities, remover, no joints' },
     { s_value: 'full', s_label: 'Full — swept paths with joints and remover' },

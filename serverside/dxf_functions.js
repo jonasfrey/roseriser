@@ -1565,6 +1565,148 @@ ${f_s_sweep_block('profile_remover_mirroredx')}
     return s_scad;
 };
 
+// ===== SIMPLE SCAD GENERATION WITH JOINTS (endpoint revolves + connection joints, no remover) =====
+
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1){
+    let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
+    let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
+
+    let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
+    let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
+
+    let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
+    let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
+    let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
+
+    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
+    let a_o_connection = o_sketch__path.a_o_entity_connection;
+
+    // Extension length for joints — must be long enough to fully overlap at any angle
+    // Compute from profile dimensions (max of width and height ranges)
+    let a_x = o_sketch__profile.a_o_vec3_trn.map(p => p.n_x);
+    let a_y = o_sketch__profile.a_o_vec3_trn.map(p => p.n_y);
+    let n_profile_width = Math.max(...a_x) - Math.min(...a_x);
+    let n_profile_height = Math.max(...a_y) - Math.min(...a_y);
+    let n_ext = Math.max(n_profile_width, n_profile_height) * 3;
+
+    let n_segments = 50;
+
+    // Helper: generate a short extension path for an entity at a connection point
+    // The extension goes FROM slightly before the connection point TO well past it,
+    // continuing in the entity's direction
+    let f_s_extension_sweep = function(o_conn, o_entity, o_vec3_dir, n_idx_joint, s_side){
+        let cp = o_conn.o_trn_vec3_connected;
+        // o_vec3_dir points FROM the connection INTO the entity (the entity's travel direction from this point).
+        // To extend past the connection, go in the OPPOSITE direction (continuing beyond the connection)
+        let dx = -o_vec3_dir.n_x;
+        let dy = -o_vec3_dir.n_y;
+
+        // Extension line: from connection point to connection point + extension
+        let x0 = cp.n_x;
+        let y0 = cp.n_y;
+        let x1 = cp.n_x + dx * n_ext;
+        let y1 = cp.n_y + dy * n_ext;
+
+        return `path_sweep2d(profile_mirroredx, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
+    };
+
+    // Generate joint blocks
+    let s_joints = a_o_connection.map((o_conn, n_idx) => {
+        if(o_conn.b_tangent) return ''; // skip tangent (nearly collinear) connections
+
+        let s_ext_a = f_s_extension_sweep(o_conn, o_conn.o_entity_a, o_conn.o_vec3_dir_entity_a, n_idx, 'a');
+        let s_ext_b = f_s_extension_sweep(o_conn, o_conn.o_entity_b, o_conn.o_vec3_dir_entity_b, n_idx, 'b');
+
+        return `    // Joint ${n_idx} at [${o_conn.o_trn_vec3_connected.n_x.toFixed(2)}, ${o_conn.o_trn_vec3_connected.n_y.toFixed(2)}]
+    intersection() {
+        ${s_ext_a}
+        ${s_ext_b}
+    }`;
+    }).filter(s => s).join('\n\n');
+
+    let s_scad = `
+include <BOSL2/std.scad>
+
+${s_scad_profile}
+
+// ===== PATH ENTITY DEFINITIONS =====
+${a_o_entity_line.map((o, n_idx) => {
+    return `line_${n_idx} = [[${o.o_vec3_trn_start.n_x}, ${o.o_vec3_trn_start.n_y}], [${o.o_vec3_trn_end.n_x}, ${o.o_vec3_trn_end.n_y}]];`;
+}).join('\n')}
+
+${a_o_entity_arc.map((o, n_idx) => {
+    return `arc_${n_idx} = [
+    [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],
+    ${o.n_radius},
+    ${o.n_ang_deg_start},
+    ${o.n_ang_deg_end}
+];`;
+}).join('\n')}
+
+${a_o_entity_circle.map((o, n_idx) => {
+    return `circle_${n_idx} = [
+    [${o.o_vec3_trn.n_x}, ${o.o_vec3_trn.n_y}, ${o.o_vec3_trn.n_z}],
+    ${o.n_radius}
+];`;
+}).join('\n')}
+
+// ===== UNCONNECTED ENDPOINTS =====
+${a_o_endpoint.map((o, idx) =>
+    `endpoint_${idx} = [${o.o_vec3.n_x.toFixed(6)}, ${o.o_vec3.n_y.toFixed(6)}, ${(o.o_vec3.n_z || 0).toFixed(6)}];
+endpoint_${idx}_angle = ${o.n_rotation_deg.toFixed(6)};`
+).join('\n')}
+
+// ===== SWEEP MODULES =====
+module sweep_arc_2d(profile, arc_def, n_segments=${n_segments}) {
+    center = arc_def[0];
+    radius = arc_def[1];
+    start_angle = arc_def[2];
+    end_angle = arc_def[3];
+    translate([center[0], center[1], 0])
+    path_sweep2d(profile, arc(n=n_segments, r=radius, angle=[start_angle, end_angle]));
+}
+
+module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
+    center = circle_def[0];
+    radius = circle_def[1];
+    translate([center[0], center[1], 0])
+    path_sweep2d(profile, circle(r=radius, $fn=n_segments), closed=true);
+}
+
+// ===== RENDER =====
+$fn = 32;
+
+union() {
+    // Sweep lines
+    ${a_o_entity_line.map((o, n_idx) => {
+        return `path_sweep2d(profile_mirroredx, line_${n_idx});`;
+    }).join('\n    ')}
+
+    // Sweep arcs
+    ${a_o_entity_arc.map((o, n_idx) => {
+        return `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
+    }).join('\n    ')}
+
+    // Sweep circles
+    ${a_o_entity_circle.map((o, n_idx) => {
+        return `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
+    }).join('\n    ')}
+
+    // Endpoint caps (90° revolve of profile around its X axis)
+    ${a_o_endpoint.map((o, idx) => {
+        return `translate(endpoint_${idx})
+    rotate([0, 0, endpoint_${idx}_angle])
+    profile_endpoint_cap();`;
+    }).join('\n    ')}
+
+    // Connection point joints (intersection of extended sweeps)
+${s_joints}
+}
+`;
+    return s_scad;
+};
+
 // ===== FULL SCAD GENERATION (with joints and remover) =====
 
 let f_s_scad__generate = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1){
@@ -1602,5 +1744,6 @@ export {
     f_s_scad__generate,
     f_s_scad__generate_simple,
     f_s_scad__generate_simple_remover,
+    f_s_scad__generate_simple_joints,
     f_s_scad__generate_profile_revolve,
 };

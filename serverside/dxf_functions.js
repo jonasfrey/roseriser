@@ -1357,6 +1357,59 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
+// Extend entities slightly at connection points to prevent tiny gaps
+let f_a_o_entity_extended_at_connections = function(a_o_entity, a_o_connection){
+    let n_line_ext = 0.01; // mm extension for lines
+    let n_arc_ext_deg = 0.5; // degree extension for arcs
+
+    // Build a set of connection point coordinates per entity endpoint
+    let o_map_connected = new Map(); // key: entity index + '_start'/'_end', value: true
+    for(let o_conn of a_o_connection){
+        for(let n_idx = 0; n_idx < a_o_entity.length; n_idx++){
+            let o_ent = a_o_entity[n_idx];
+            if(o_ent.s_type === 'CIRCLE') continue;
+            if(o_ent.o_vec3_trn_start && f_b_vec3_equal(o_ent.o_vec3_trn_start, o_conn.o_trn_vec3_connected)){
+                o_map_connected.set(n_idx + '_start', true);
+            }
+            if(o_ent.o_vec3_trn_end && f_b_vec3_equal(o_ent.o_vec3_trn_end, o_conn.o_trn_vec3_connected)){
+                o_map_connected.set(n_idx + '_end', true);
+            }
+        }
+    }
+
+    return a_o_entity.map((o_ent, n_idx) => {
+        let o = JSON.parse(JSON.stringify(o_ent)); // deep clone
+        let b_start_connected = o_map_connected.has(n_idx + '_start');
+        let b_end_connected = o_map_connected.has(n_idx + '_end');
+
+        if(o.s_type === 'LINE'){
+            if(b_start_connected && o.o_vec3_direction){
+                o.o_vec3_trn_start = f_o_vec3(
+                    o.o_vec3_trn_start.n_x - o.o_vec3_direction.n_x * n_line_ext,
+                    o.o_vec3_trn_start.n_y - o.o_vec3_direction.n_y * n_line_ext,
+                    o.o_vec3_trn_start.n_z
+                );
+            }
+            if(b_end_connected && o.o_vec3_direction){
+                o.o_vec3_trn_end = f_o_vec3(
+                    o.o_vec3_trn_end.n_x + o.o_vec3_direction.n_x * n_line_ext,
+                    o.o_vec3_trn_end.n_y + o.o_vec3_direction.n_y * n_line_ext,
+                    o.o_vec3_trn_end.n_z
+                );
+            }
+        }
+        if(o.s_type === 'ARC'){
+            if(b_start_connected){
+                o.n_ang_deg_start -= n_arc_ext_deg;
+            }
+            if(b_end_connected){
+                o.n_ang_deg_end += n_arc_ext_deg;
+            }
+        }
+        return o;
+    });
+};
+
 let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1365,9 +1418,12 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
     let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
     let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
 
-    let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
-    let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
-    let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
+    // Extend entities slightly at connection points to prevent tiny gaps
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+
+    let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
+    let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");
+    let a_o_entity_circle = a_o_entity__path_extended.filter(o => o.s_type === "CIRCLE");
 
     let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
 
@@ -1466,9 +1522,12 @@ let f_s_scad__generate_simple_remover = function(o_dxffile__profile, o_dxffile__
     let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
     let s_scad_profile_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile_remover, "profile_remover");
 
-    let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
-    let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
-    let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
+    // Extend entities slightly at connection points to prevent tiny gaps
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+
+    let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
+    let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");
+    let a_o_entity_circle = a_o_entity__path_extended.filter(o => o.s_type === "CIRCLE");
     let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
 
     let n_segments = 50;
@@ -1575,9 +1634,12 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
     let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
 
-    let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
-    let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
-    let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
+    // Extend entities slightly at connection points to prevent tiny gaps
+    let a_o_entity__path_extended = f_a_o_entity_extended_at_connections(a_o_entity__path, o_sketch__path.a_o_entity_connection);
+
+    let a_o_entity_line = a_o_entity__path_extended.filter(o => o.s_type === "LINE");
+    let a_o_entity_arc = a_o_entity__path_extended.filter(o => o.s_type === "ARC");
+    let a_o_entity_circle = a_o_entity__path_extended.filter(o => o.s_type === "CIRCLE");
 
     let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
     let a_o_connection = o_sketch__path.a_o_entity_connection;

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"keyvalpair\" /home/legion5pro/code/browser_crud_app_template/serverside/testing/*.js)",
+      "Bash(deno eval:*)",
+      "Bash(deno eval \":*)",
+      "Read(//home/legion5pro/code/roseriser/**)",
+      "Bash(find /home/legion5pro/code/roseriser/debug_images -type f \\\\\\(-iname *.png -o -iname *.jpg -o -iname *.jpeg -o -iname *.webp \\\\\\) -printf '%T@ %TY-%Tm-%Td %TH:%TM:%TS %p\\\\n')"
+    ]
+  }
+}

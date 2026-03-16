@@ -4,7 +4,7 @@
 import DxfParser from "npm:dxf-parser";
 import { listInputFiles, listProfiles, listProfileCombo, batchConvert, checkOpenScad } from "./batch_conversion.js";
 
-const PORT = 8000;
+const PORT = 8007;
 const STATIC_DIR = "./httpserved";
 
 const MIME_TYPES = {

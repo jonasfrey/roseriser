@@ -1542,9 +1542,10 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let n_ang = o_conn.n_ang_rad_between_entities;
 
         // Non-flowing tangent (angle ≈ 0°): entities double back — use endpoint revolves
+        // Directions point INTO entities, but caps should face AWAY → add 180°
         if(n_ang < (15 * Math.PI / 180)){
-            let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI;
-            let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI;
+            let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
+            let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
             return `    // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
     translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
     rotate([0, 0, ${n_ang_a.toFixed(6)}])
@@ -1727,9 +1728,10 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
             let n_ang = o_conn.n_ang_rad_between_entities;
 
             // Non-flowing tangent (angle ≈ 0°): use endpoint revolves
+            // Directions point INTO entities, but caps should face AWAY → add 180°
             if(n_ang < (15 * Math.PI / 180)){
-                let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI;
-                let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI;
+                let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
+                let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
                 return `        // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
         translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
         rotate([0, 0, ${n_ang_a.toFixed(6)}])

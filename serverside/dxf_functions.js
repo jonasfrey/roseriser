@@ -1487,7 +1487,7 @@ union() {
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS (endpoint revolves + connection joints, no remover) =====
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_joints_only_90deg = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1553,6 +1553,13 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
     rotate([0, 0, ${n_ang_b.toFixed(6)}])
     profile_endpoint_cap();`;
+        }
+
+        // Only generate intersection joints for ~90° when option is enabled
+        // The angle between entity directions: 90° meeting = 90° between INTO-directions
+        if(b_joints_only_90deg){
+            let n_deg = n_ang * 180 / Math.PI;
+            if(Math.abs(n_deg - 90) > 15) return ''; // skip if not within ±15° of 90°
         }
 
         // Angled connection: use intersection of extended sweeps
@@ -1679,7 +1686,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_joints_only_90deg = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1739,6 +1746,12 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
         rotate([0, 0, ${n_ang_b.toFixed(6)}])
         ${s_cap_module}();`;
+            }
+
+            // Only generate intersection joints for ~90° when option is enabled
+            if(b_joints_only_90deg){
+                let n_deg = n_ang * 180 / Math.PI;
+                if(Math.abs(n_deg - 90) > 15) return '';
             }
 
             // Angled connection: intersection of extended sweeps

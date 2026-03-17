@@ -394,6 +394,29 @@ let o_component__dxf2scad = {
                     },
                 ],
             },
+            // Joints: only 90° option
+            {
+                s_tag: 'div',
+                class: 'o_dxf2scad__upload_row',
+                'v-if': "s_generation_type === 'simple_endpoints_joints' || s_generation_type === 'simple_endpoints_joints_remover'",
+                a_o: [
+                    {
+                        s_tag: 'label',
+                        class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            {
+                                s_tag: 'input',
+                                type: 'checkbox',
+                                'v-model': 'b_joints_only_90deg',
+                            },
+                            {
+                                s_tag: 'span',
+                                innerText: ' Only generate joints for ~90° connections',
+                            },
+                        ],
+                    },
+                ],
+            },
             // Upload sections
             {
                 s_tag: 'div',
@@ -682,6 +705,7 @@ let o_component__dxf2scad = {
             a_o_generation_type,
             n_point_per_mm: 1,
             s_sweep_function: 'path_sweep',
+            b_joints_only_90deg: false,
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
@@ -788,6 +812,7 @@ let o_component__dxf2scad = {
                         n_id__path: o_self.n_id__path,
                         n_point_per_mm: o_self.n_point_per_mm,
                         s_sweep_function: o_self.s_sweep_function,
+                        b_joints_only_90deg: o_self.b_joints_only_90deg,
                     })
                 );
 

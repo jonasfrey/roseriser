@@ -55,6 +55,45 @@ let f_n_dot_from_o_vec3 = function(o_vec3_a, o_vec3_b){
     );
 };
 
+// Check if a point lies ON an entity's path (not at its endpoints)
+let f_b_point_on_entity = function(o_vec3_point, o_entity, n_tolerance = 0.01){
+    if(o_entity.s_type === "LINE"){
+        let sx = o_entity.o_vec3_trn_start.n_x, sy = o_entity.o_vec3_trn_start.n_y;
+        let ex = o_entity.o_vec3_trn_end.n_x, ey = o_entity.o_vec3_trn_end.n_y;
+        let px = o_vec3_point.n_x, py = o_vec3_point.n_y;
+        // Skip if point is at an endpoint
+        if(f_b_vec3_equal(o_vec3_point, o_entity.o_vec3_trn_start, n_tolerance) ||
+           f_b_vec3_equal(o_vec3_point, o_entity.o_vec3_trn_end, n_tolerance)) return false;
+        // Check if point is on the line segment: cross product ≈ 0 and within bounds
+        let dx = ex - sx, dy = ey - sy;
+        let cross = Math.abs((px - sx) * dy - (py - sy) * dx);
+        let len = Math.sqrt(dx * dx + dy * dy);
+        if(len < n_tolerance) return false;
+        if(cross / len > n_tolerance) return false;
+        // Check within segment bounds
+        let t = ((px - sx) * dx + (py - sy) * dy) / (len * len);
+        return t > 0 && t < 1;
+    }
+    if(o_entity.s_type === "ARC"){
+        let cx = o_entity.o_vec3_trn.n_x, cy = o_entity.o_vec3_trn.n_y;
+        let px = o_vec3_point.n_x, py = o_vec3_point.n_y;
+        // Skip if point is at an endpoint
+        if(f_b_vec3_equal(o_vec3_point, o_entity.o_vec3_trn_start, n_tolerance) ||
+           f_b_vec3_equal(o_vec3_point, o_entity.o_vec3_trn_end, n_tolerance)) return false;
+        // Check distance from center ≈ radius
+        let dist = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        if(Math.abs(dist - o_entity.n_radius) > n_tolerance) return false;
+        // Check angle is within arc range
+        let ang = Math.atan2(py - cy, px - cx) * 180 / Math.PI;
+        let start = o_entity.n_ang_deg_start;
+        let end = o_entity.n_ang_deg_end;
+        // Normalize angle to be within start..end range
+        while(ang < start) ang += 360;
+        return ang <= end;
+    }
+    return false;
+};
+
 // ===== ENTITY FACTORY =====
 
 let f_o_entity = function(
@@ -1487,7 +1526,7 @@ union() {
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS (endpoint revolves + connection joints, no remover) =====
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_joints_only_90deg = false){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1534,6 +1573,24 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         return `path_sweep2d(profile_mirroredx, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
     };
 
+    // Count how many entities connect at each point
+    let o_entity_count_by_point = {};
+    for(let o_conn of a_o_connection){
+        let s_key = `${o_conn.o_trn_vec3_connected.n_x.toFixed(4)},${o_conn.o_trn_vec3_connected.n_y.toFixed(4)}`;
+        if(!o_entity_count_by_point[s_key]) o_entity_count_by_point[s_key] = new Set();
+        o_entity_count_by_point[s_key].add(o_conn.o_entity_a);
+        o_entity_count_by_point[s_key].add(o_conn.o_entity_b);
+    }
+
+    // Check if a connection point lies on any other entity's path
+    let a_o_all_entities = [...a_o_entity_line, ...a_o_entity_arc];
+    let f_b_point_on_other_entity = function(o_vec3_point, o_entity_a, o_entity_b){
+        return a_o_all_entities.some(o_ent =>
+            o_ent !== o_entity_a && o_ent !== o_entity_b &&
+            f_b_point_on_entity(o_vec3_point, o_ent)
+        );
+    };
+
     // Generate joint blocks
     let s_joints = a_o_connection.map((o_conn, n_idx) => {
         if(o_conn.b_tangent) return ''; // skip smooth flowing connections
@@ -1555,11 +1612,16 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     profile_endpoint_cap();`;
         }
 
-        // Only generate intersection joints for ~90° when option is enabled
-        // The angle between entity directions: 90° meeting = 90° between INTO-directions
-        if(b_joints_only_90deg){
+        let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
+        let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
+
+        if(n_entities_at_point > 2){
+            // 3+ entities at this point: only generate joints for ~90° pairs
             let n_deg = n_ang * 180 / Math.PI;
-            if(Math.abs(n_deg - 90) > 15) return ''; // skip if not within ±15° of 90°
+            if(Math.abs(n_deg - 90) > 15) return '';
+        } else {
+            // Exactly 2 entities: generate joint unless point lies on another entity
+            if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
         }
 
         // Angled connection: use intersection of extended sweeps
@@ -1686,7 +1748,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_joints_only_90deg = false){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1726,6 +1788,23 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         return `${s_sweep_function}(${s_profile_var}, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
     };
 
+    // Count entities per connection point
+    let o_entity_count_by_point = {};
+    for(let o_conn of a_o_connection){
+        let s_key = `${o_conn.o_trn_vec3_connected.n_x.toFixed(4)},${o_conn.o_trn_vec3_connected.n_y.toFixed(4)}`;
+        if(!o_entity_count_by_point[s_key]) o_entity_count_by_point[s_key] = new Set();
+        o_entity_count_by_point[s_key].add(o_conn.o_entity_a);
+        o_entity_count_by_point[s_key].add(o_conn.o_entity_b);
+    }
+
+    let a_o_all_entities = [...a_o_entity_line, ...a_o_entity_arc];
+    let f_b_point_on_other_entity = function(o_vec3_point, o_entity_a, o_entity_b){
+        return a_o_all_entities.some(o_ent =>
+            o_ent !== o_entity_a && o_ent !== o_entity_b &&
+            f_b_point_on_entity(o_vec3_point, o_ent)
+        );
+    };
+
     // Generate joint blocks for a given profile variable and its endpoint cap module name
     let f_s_joints = function(s_profile_var, s_cap_module){
         return a_o_connection.map((o_conn, n_idx) => {
@@ -1748,10 +1827,16 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         ${s_cap_module}();`;
             }
 
-            // Only generate intersection joints for ~90° when option is enabled
-            if(b_joints_only_90deg){
+            let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
+            let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
+
+            if(n_entities_at_point > 2){
+                // 3+ entities at this point: only generate joints for ~90° pairs
                 let n_deg = n_ang * 180 / Math.PI;
                 if(Math.abs(n_deg - 90) > 15) return '';
+            } else {
+                // Exactly 2 entities: skip if point lies on another entity's path
+                if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
             }
 
             // Angled connection: intersection of extended sweeps

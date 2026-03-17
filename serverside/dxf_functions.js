@@ -279,7 +279,10 @@ let f_a_o_entity_connection_from_a_o_entity = function(a_o_entity){
                     let n_dot = f_n_dot_from_o_vec3(o_vec3_dir_a, o_vec3_dir_b);
                     n_dot = Math.max(-1, Math.min(1, n_dot));
                     let n_ang_rad_between = Math.acos(n_dot);
-                    let b_tangent = n_ang_rad_between < (15 * Math.PI / 180);
+                    // Directions point INTO each entity from the connection.
+                    // Flowing/smooth: directions are opposite (≈180°) → tangent
+                    // Non-flowing: directions are similar (≈0°) → not tangent, needs joint/revolve
+                    let b_tangent = n_ang_rad_between > (165 * Math.PI / 180);
 
                     let n_avg_x = (o_vec3_dir_a.n_x + o_vec3_dir_b.n_x) / 2;
                     let n_avg_y = (o_vec3_dir_a.n_y + o_vec3_dir_b.n_y) / 2;
@@ -1533,12 +1536,29 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
 
     // Generate joint blocks
     let s_joints = a_o_connection.map((o_conn, n_idx) => {
-        if(o_conn.b_tangent) return ''; // skip tangent (nearly collinear) connections
+        if(o_conn.b_tangent) return ''; // skip smooth flowing connections
 
+        let cp = o_conn.o_trn_vec3_connected;
+        let n_ang = o_conn.n_ang_rad_between_entities;
+
+        // Non-flowing tangent (angle ≈ 0°): entities double back — use endpoint revolves
+        if(n_ang < (15 * Math.PI / 180)){
+            let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI;
+            let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI;
+            return `    // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
+    translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
+    rotate([0, 0, ${n_ang_a.toFixed(6)}])
+    profile_endpoint_cap();
+    translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
+    rotate([0, 0, ${n_ang_b.toFixed(6)}])
+    profile_endpoint_cap();`;
+        }
+
+        // Angled connection: use intersection of extended sweeps
         let s_ext_a = f_s_extension_sweep(o_conn, o_conn.o_entity_a, o_conn.o_vec3_dir_entity_a, n_idx, 'a');
         let s_ext_b = f_s_extension_sweep(o_conn, o_conn.o_entity_b, o_conn.o_vec3_dir_entity_b, n_idx, 'b');
 
-        return `    // Joint ${n_idx} at [${o_conn.o_trn_vec3_connected.n_x.toFixed(2)}, ${o_conn.o_trn_vec3_connected.n_y.toFixed(2)}]
+        return `    // Joint ${n_idx} at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
     intersection() {
         ${s_ext_a}
         ${s_ext_b}
@@ -1698,10 +1718,28 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         return `${s_sweep_function}(${s_profile_var}, [[${x0}, ${y0}], [${x1}, ${y1}]]);`;
     };
 
-    // Generate joint blocks for a given profile variable
-    let f_s_joints = function(s_profile_var){
+    // Generate joint blocks for a given profile variable and its endpoint cap module name
+    let f_s_joints = function(s_profile_var, s_cap_module){
         return a_o_connection.map((o_conn, n_idx) => {
             if(o_conn.b_tangent) return '';
+
+            let cp = o_conn.o_trn_vec3_connected;
+            let n_ang = o_conn.n_ang_rad_between_entities;
+
+            // Non-flowing tangent (angle ≈ 0°): use endpoint revolves
+            if(n_ang < (15 * Math.PI / 180)){
+                let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI;
+                let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI;
+                return `        // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
+        translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
+        rotate([0, 0, ${n_ang_a.toFixed(6)}])
+        ${s_cap_module}();
+        translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
+        rotate([0, 0, ${n_ang_b.toFixed(6)}])
+        ${s_cap_module}();`;
+            }
+
+            // Angled connection: intersection of extended sweeps
             let s_ext_a = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_a);
             let s_ext_b = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_b);
             return `        // Joint ${n_idx}
@@ -1824,7 +1862,7 @@ ${f_s_sweep_block('profile_mirroredx')}
         }).join('\n        ')}
 
         // Connection point joints
-${f_s_joints('profile_mirroredx')}
+${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
     }
 
     // Remover: same geometry but with remover profile, offset to keep DXF-relative position
@@ -1840,7 +1878,7 @@ ${f_s_sweep_block('profile_remover_mirroredx')}
         }).join('\n        ')}
 
         // Connection point joints (remover)
-${f_s_joints('profile_remover_mirroredx')}
+${f_s_joints('profile_remover_mirroredx', 'profile_remover_endpoint_cap')}
     }
 }
 `;

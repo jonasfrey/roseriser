@@ -315,9 +315,6 @@ let a_o_generation_type = [
     { s_value: 'simple_endpoints', s_label: 'Simple — all entities, endpoint revolves, no joints, no remover' },
     { s_value: 'simple_endpoints_joints', s_label: 'Simple — all entities, endpoint revolves, joints, no remover' },
     { s_value: 'simple_endpoints_joints_remover', s_label: 'Simple — all entities, endpoint revolves, joints, remover' },
-    { s_value: 'simple_endpoints_remover', s_label: 'Simple — all entities, endpoint revolves, remover, no joints' },
-    { s_value: 'simple_remover', s_label: 'Simple — all entities, remover, no joints' },
-    { s_value: 'full', s_label: 'Full — swept paths with joints and remover' },
 ];
 
 let o_component__dxf2scad = {
@@ -466,7 +463,7 @@ let o_component__dxf2scad = {
                     // Profile Remover (only for full mode)
                     {
                         s_tag: 'div',
-                        'v-if': "s_generation_type === 'full' || s_generation_type === 'simple_remover' || s_generation_type === 'simple_endpoints_remover' || s_generation_type === 'simple_endpoints_joints_remover'",
+                        'v-if': "s_generation_type === 'simple_endpoints_joints_remover'",
                         class: 'o_dxf2scad__upload_group',
                         a_o: [
                             {
@@ -732,7 +729,7 @@ let o_component__dxf2scad = {
             if (!this.n_id__profile) return false;
             if (this.s_generation_type === 'profile_revolve') return true;
             if (!this.n_id__path) return false;
-            if ((this.s_generation_type === 'full' || this.s_generation_type === 'simple_remover' || this.s_generation_type === 'simple_endpoints_remover' || this.s_generation_type === 'simple_endpoints_joints_remover') && !this.n_id__profile_remover) return false;
+            if (this.s_generation_type === 'simple_endpoints_joints_remover' && !this.n_id__profile_remover) return false;
             return true;
         },
     },

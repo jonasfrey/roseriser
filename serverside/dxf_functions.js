@@ -731,7 +731,7 @@ let f_a_o_point__removed_duplicate = function(a_o_point, n_tolerance = 0.0001){
 
 // Extract xpositive (right-half) points from ordered profile points.
 // Handles both open paths (just right side) and closed contours (full loop including left edge at x≈axis).
-let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
+let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3, b_mirror_side_override = false){
     if(a_o_vec3.length === 0) return { a_o_xpositive: [], a_o_mirroredx: [] };
 
     let n_x__min = Math.min(...a_o_vec3.map(p => p.n_x));
@@ -749,6 +749,7 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
     // If average x is closer to x_min, profile extends to the right → axis at x_min
     // If average x is closer to x_max, profile extends to the left → axis at x_max, flip
     let b_profile_on_left = n_avg_x > n_mid_x;
+    if(b_mirror_side_override) b_profile_on_left = !b_profile_on_left;
     let n_axis_x = b_profile_on_left ? n_x__max : n_x__min;
 
     // check if contour is closed (first ≈ last point)
@@ -831,13 +832,13 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
     return { a_o_xpositive, a_o_mirroredx, n_x__min: n_axis_x, n_x__max: n_axis_x + n_profile_half_width, n_y__min, n_y__max, n_y__center };
 };
 
-let f_s_scad_profile_functions_from_o_sketch = function(o_sketch, s_profile_name = "profile"){
+let f_s_scad_profile_functions_from_o_sketch = function(o_sketch, s_profile_name = "profile", b_mirror_side_override = false){
     let a_o_vec3 = o_sketch.a_o_vec3_trn;
     if(a_o_vec3.length === 0){
         return "// No points in profile\n";
     }
 
-    let o_prof = f_o_profile_points_from_a_o_vec3(a_o_vec3);
+    let o_prof = f_o_profile_points_from_a_o_vec3(a_o_vec3, b_mirror_side_override);
     let a_o_xpositive = o_prof.a_o_xpositive;
     let a_o_mirroredx = o_prof.a_o_mirroredx;
     let n_x__min = o_prof.n_x__min;
@@ -1368,10 +1369,10 @@ let f_o_result__upload_dxf = async function(s_dxf_content, s_name, s_type){
 
 // ===== PROFILE REVOLVE ONLY =====
 
-let f_s_scad__generate_profile_revolve = function(o_dxffile__profile, n_point_per_mm = 1){
+let f_s_scad__generate_profile_revolve = function(o_dxffile__profile, n_point_per_mm = 1, b_mirror_side_override = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
-    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile", b_mirror_side_override);
 
     let s_scad = `
 include <BOSL2/std.scad>
@@ -1409,13 +1410,13 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d'){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
     let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
     let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
-    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile", b_mirror_side_override);
 
     let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
@@ -1536,13 +1537,13 @@ union() {
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS (endpoint revolves + connection joints, no remover) =====
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
     let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
     let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
-    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile", b_mirror_side_override);
 
     let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
@@ -1758,7 +1759,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d'){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1766,8 +1767,8 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
     let o_sketch__profile = f_o_sketch_from_a_o_entity(a_o_entity__profile, n_point_per_mm);
     let o_sketch__profile_remover = f_o_sketch_from_a_o_entity(a_o_entity__profile_remover, n_point_per_mm);
     let o_sketch__path = f_o_sketch_from_a_o_entity(a_o_entity__path, n_point_per_mm);
-    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile");
-    let s_scad_profile_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile_remover, "profile_remover");
+    let s_scad_profile = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile, "profile", b_mirror_side_override);
+    let s_scad_profile_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch__profile_remover, "profile_remover", b_mirror_side_override);
 
     let a_o_entity_line = a_o_entity__path.filter(o => o.s_type === "LINE");
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");

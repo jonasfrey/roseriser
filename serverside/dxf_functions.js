@@ -739,8 +739,17 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
     let n_y__min = Math.min(...a_o_vec3.map(p => p.n_y));
     let n_y__max = Math.max(...a_o_vec3.map(p => p.n_y));
     let n_y__center = (n_y__min + n_y__max) / 2;
-    let n_axis_x = n_x__min;
     let n_tol = 0.001;
+
+    // Detect which side the profile is on: compare distance of points from x_min vs x_max
+    // The axis is at the edge closest to the mirror line (where points cluster)
+    // The profile extends away from the axis
+    let n_avg_x = a_o_vec3.reduce((s, p) => s + p.n_x, 0) / a_o_vec3.length;
+    let n_mid_x = (n_x__min + n_x__max) / 2;
+    // If average x is closer to x_min, profile extends to the right → axis at x_min
+    // If average x is closer to x_max, profile extends to the left → axis at x_max, flip
+    let b_profile_on_left = n_avg_x > n_mid_x;
+    let n_axis_x = b_profile_on_left ? n_x__max : n_x__min;
 
     // check if contour is closed (first ≈ last point)
     let b_closed = a_o_vec3.length > 2 &&
@@ -768,8 +777,8 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
                 if(a_o_vec3[i].n_y > a_o_vec3[n_idx__top].n_y) n_idx__top = i;
             }
 
-            // walk from bottom to top going through the non-axis (right) side
-            // try both directions and pick the one that goes through higher x values
+            // walk from bottom to top going through the non-axis side
+            // try both directions and pick the one that goes further from axis
             let f_extract_segment = function(n_from, n_to){
                 let a_o = [];
                 let n_len = a_o_vec3.length;
@@ -787,25 +796,24 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
             // reverse path_b so it also goes bottom→top
             a_o_path_b.reverse();
 
-            // pick the path with higher average x (the right side)
-            let f_n_avg_x = function(a){ return a.reduce(function(s, p){ return s + p.n_x; }, 0) / a.length; };
-            let a_o_right_side = (f_n_avg_x(a_o_path_a) >= f_n_avg_x(a_o_path_b)) ? a_o_path_a : a_o_path_b;
+            // pick the path further from axis (the profile side)
+            let f_n_avg_dist = function(a){ return a.reduce(function(s, p){ return s + Math.abs(p.n_x - n_axis_x); }, 0) / a.length; };
+            let a_o_profile_side = (f_n_avg_dist(a_o_path_a) >= f_n_avg_dist(a_o_path_b)) ? a_o_path_a : a_o_path_b;
 
-            a_o_xpositive = a_o_right_side.map(function(p){
-                return { x: p.n_x - n_axis_x, y: p.n_y - n_y__center };
+            a_o_xpositive = a_o_profile_side.map(function(p){
+                return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y__center };
             });
         } else {
             // fallback: only one axis point, use all non-axis points
-            a_o_xpositive = a_o_vec3.filter(function(p){ return p.n_x > n_axis_x + n_tol; }).map(function(p){
-                return { x: p.n_x - n_axis_x, y: p.n_y - n_y__center };
+            a_o_xpositive = a_o_vec3.filter(function(p){ return Math.abs(p.n_x - n_axis_x) > n_tol; }).map(function(p){
+                return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y__center };
             });
         }
     } else {
-        // open path: filter for x >= 0 (original behavior)
-        let a_o_raw = a_o_vec3.filter(function(p){ return p.n_x >= n_axis_x - n_tol; });
-        if(a_o_raw.length === 0) a_o_raw = a_o_vec3;
+        // open path: use points on the profile side (further from axis)
+        let a_o_raw = a_o_vec3.filter(function(p){ return Math.abs(p.n_x - n_axis_x) >= n_tol || true; });
         a_o_xpositive = a_o_raw.map(function(p){
-            return { x: p.n_x - n_axis_x, y: p.n_y - n_y__center };
+            return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y__center };
         });
     }
 
@@ -818,7 +826,9 @@ let f_o_profile_points_from_a_o_vec3 = function(a_o_vec3){
         a_o_mirroredx.push({ x: -a_o_xpositive[i].x, y: a_o_xpositive[i].y });
     }
 
-    return { a_o_xpositive, a_o_mirroredx, n_x__min, n_x__max, n_y__min, n_y__max, n_y__center };
+    // n_x__min is the axis position (for trn_x), n_profile_half_width is the one-side extent
+    let n_profile_half_width = b_profile_on_left ? (n_x__max - n_x__min) : (n_x__max - n_x__min);
+    return { a_o_xpositive, a_o_mirroredx, n_x__min: n_axis_x, n_x__max: n_axis_x + n_profile_half_width, n_y__min, n_y__max, n_y__center };
 };
 
 let f_s_scad_profile_functions_from_o_sketch = function(o_sketch, s_profile_name = "profile"){

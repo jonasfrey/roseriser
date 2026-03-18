@@ -410,7 +410,28 @@ let o_component__dxf2scad = {
                             },
                             {
                                 s_tag: 'span',
-                                innerText: ' Flip mirror side',
+                                innerText: ' Flip X (mirror side)',
+                            },
+                        ],
+                    },
+                ],
+            },
+            {
+                s_tag: 'div',
+                class: 'o_dxf2scad__upload_row',
+                a_o: [
+                    {
+                        s_tag: 'label',
+                        class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            {
+                                s_tag: 'input',
+                                type: 'checkbox',
+                                'v-model': 'b_flip_y',
+                            },
+                            {
+                                s_tag: 'span',
+                                innerText: ' Flip Y',
                             },
                         ],
                     },
@@ -705,6 +726,7 @@ let o_component__dxf2scad = {
             n_point_per_mm: 1,
             s_sweep_function: 'path_sweep',
             b_mirror_side_override: false,
+            b_flip_y: false,
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
@@ -812,6 +834,7 @@ let o_component__dxf2scad = {
                         n_point_per_mm: o_self.n_point_per_mm,
                         s_sweep_function: o_self.s_sweep_function,
                         b_mirror_side_override: o_self.b_mirror_side_override,
+                        b_flip_y: o_self.b_flip_y,
                     })
                 );
 

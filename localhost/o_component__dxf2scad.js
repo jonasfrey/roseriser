@@ -132,7 +132,7 @@ let f_a_o_point__from_entity_directed = function(o_ent, b_reversed, n_point_per_
 
 let f_b_pt_eq = function(a, b){ return Math.abs(a.n_x - b.n_x) < 0.0001 && Math.abs(a.n_y - b.n_y) < 0.0001; };
 
-let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 1){
+let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 1, b_mirror_side_override = false, b_flip_y = false){
     // group connected entities, extract ordered points, compute xpositive + mirroredx
     let a_o_connectable = a_o_entity.filter(function(o){ return o && o.s_type !== "CIRCLE" && o.o_vec3_trn_start && o.o_vec3_trn_end; });
     if(a_o_connectable.length === 0) return { a_o_xpositive: [], a_o_mirroredx: [], a_o_ordered: [] };
@@ -193,10 +193,15 @@ let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 
 
     // same logic as server f_o_profile_points_from_a_o_vec3
     let n_x_min = Math.min(...a_o_vec3.map(function(p){ return p.n_x; }));
+    let n_x_max = Math.max(...a_o_vec3.map(function(p){ return p.n_x; }));
     let n_y_min = Math.min(...a_o_vec3.map(function(p){ return p.n_y; }));
     let n_y_max = Math.max(...a_o_vec3.map(function(p){ return p.n_y; }));
     let n_y_center = (n_y_min + n_y_max) / 2;
-    let n_axis_x = n_x_min;
+    let n_avg_x = a_o_vec3.reduce(function(s, p){ return s + p.n_x; }, 0) / a_o_vec3.length;
+    let n_mid_x = (n_x_min + n_x_max) / 2;
+    let b_profile_on_left = n_avg_x > n_mid_x;
+    if(b_mirror_side_override) b_profile_on_left = !b_profile_on_left;
+    let n_axis_x = b_profile_on_left ? n_x_max : n_x_min;
     let n_tol = 0.001;
 
     let b_closed = a_o_vec3.length > 2 &&
@@ -228,18 +233,16 @@ let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 
             let a_a = f_seg(n_idx__bottom, n_idx__top);
             let a_b = f_seg(n_idx__top, n_idx__bottom);
             a_b.reverse();
-            let f_avg = function(a){ return a.reduce(function(s, p){ return s + p.n_x; }, 0) / a.length; };
-            let a_right = (f_avg(a_a) >= f_avg(a_b)) ? a_a : a_b;
-            a_o_xpositive = a_right.map(function(p){ return { x: p.n_x - n_axis_x, y: p.n_y - n_y_center }; });
+            let f_avg_dist = function(a){ return a.reduce(function(s, p){ return s + Math.abs(p.n_x - n_axis_x); }, 0) / a.length; };
+            let a_profile_side = (f_avg_dist(a_a) >= f_avg_dist(a_b)) ? a_a : a_b;
+            a_o_xpositive = a_profile_side.map(function(p){ return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y_center }; });
         } else {
-            a_o_xpositive = a_o_vec3.filter(function(p){ return p.n_x > n_axis_x + n_tol; }).map(function(p){
-                return { x: p.n_x - n_axis_x, y: p.n_y - n_y_center };
+            a_o_xpositive = a_o_vec3.filter(function(p){ return Math.abs(p.n_x - n_axis_x) > n_tol; }).map(function(p){
+                return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y_center };
             });
         }
     } else {
-        let a_raw = a_o_vec3.filter(function(p){ return p.n_x >= n_axis_x - n_tol; });
-        if(a_raw.length === 0) a_raw = a_o_vec3;
-        a_o_xpositive = a_raw.map(function(p){ return { x: p.n_x - n_axis_x, y: p.n_y - n_y_center }; });
+        a_o_xpositive = a_o_vec3.map(function(p){ return { x: Math.abs(p.n_x - n_axis_x), y: p.n_y - n_y_center }; });
     }
 
     // deduplicate
@@ -250,6 +253,10 @@ let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 
     }
     a_o_xpositive = a_o_clean;
 
+    if(b_flip_y){
+        a_o_xpositive = a_o_xpositive.map(function(p){ return { x: p.x, y: -p.y }; });
+    }
+
     let a_o_mirroredx = [...a_o_xpositive];
     for(let i = a_o_xpositive.length - 1; i >= 0; i--){
         if(Math.abs(a_o_xpositive[i].x) < 0.0001) continue;
@@ -259,10 +266,10 @@ let f_a_o_profile_point_from_a_o_entity = function(a_o_entity, n_point_per_mm = 
     return { a_o_xpositive, a_o_mirroredx, a_o_ordered: a_o_vec3 };
 };
 
-let f_s_svg_profile_points = function(o_dxffile, n_point_per_mm = 1){
+let f_s_svg_profile_points = function(o_dxffile, n_point_per_mm = 1, b_mirror_side_override = false, b_flip_y = false){
     if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
     let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
-    let o_profile = f_a_o_profile_point_from_a_o_entity(a_o_entity, n_point_per_mm);
+    let o_profile = f_a_o_profile_point_from_a_o_entity(a_o_entity, n_point_per_mm, b_mirror_side_override, b_flip_y);
     let a_o_xpos = o_profile.a_o_xpositive;
     let a_o_mirror = o_profile.a_o_mirroredx;
 
@@ -755,7 +762,7 @@ let o_component__dxf2scad = {
         },
         o_svg__profile_points: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile; }.bind(this));
-            return o_dxf ? f_s_svg_profile_points(o_dxf, this.n_point_per_mm) : '';
+            return o_dxf ? f_s_svg_profile_points(o_dxf, this.n_point_per_mm, this.b_mirror_side_override, this.b_flip_y) : '';
         },
         o_svg__profile_remover: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile_remover; }.bind(this));
@@ -763,7 +770,7 @@ let o_component__dxf2scad = {
         },
         o_svg__profile_remover_points: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile_remover; }.bind(this));
-            return o_dxf ? f_s_svg_profile_points(o_dxf, this.n_point_per_mm) : '';
+            return o_dxf ? f_s_svg_profile_points(o_dxf, this.n_point_per_mm, this.b_mirror_side_override, this.b_flip_y) : '';
         },
         o_svg__path: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));

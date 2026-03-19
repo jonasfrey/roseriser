@@ -1994,7 +1994,7 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
 
             // Non-flowing tangent (angle ≈ 0°): use endpoint revolves if enabled
             if(n_ang < (15 * Math.PI / 180)){
-                if(!b_endpoint_revolves) return '';
+                if(!b_endpoint_revolves || b_round_mode) return '';
                 let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
                 let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
                 return `        // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]

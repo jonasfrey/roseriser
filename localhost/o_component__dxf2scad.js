@@ -337,28 +337,28 @@ let o_component__dxf2scad = {
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            { s_tag: 'input', type: 'checkbox', checked: true, disabled: true },
+                            { s_tag: 'input', type: 'checkbox', checked: true, disabled: true, ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' All entities' },
                         ],
                     },
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_endpoint_revolves' },
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_endpoint_revolves', ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' Endpoint revolves' },
                         ],
                     },
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_joints' },
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_joints', ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' Joints' },
                         ],
                     },
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_remover' },
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_remover', ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' Remover' },
                         ],
                     },
@@ -366,7 +366,7 @@ let o_component__dxf2scad = {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
                             { s_tag: 'input', type: 'checkbox', 'v-model': 'b_profile_revolve_only' },
-                            { s_tag: 'span', innerText: ' Profile revolve only' },
+                            { s_tag: 'span', innerText: ' Debug - profile revolve only' },
                         ],
                     },
                 ],

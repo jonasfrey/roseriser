@@ -444,6 +444,47 @@ let o_component__dxf2scad = {
                     },
                 ],
             },
+            // Round mode checkbox
+            {
+                s_tag: 'div',
+                class: 'o_dxf2scad__upload_row',
+                a_o: [
+                    {
+                        s_tag: 'label',
+                        class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            {
+                                s_tag: 'input',
+                                type: 'checkbox',
+                                'v-model': 'b_round_mode',
+                            },
+                            {
+                                s_tag: 'span',
+                                innerText: ' Round mode (wrap path onto cylinder)',
+                            },
+                        ],
+                    },
+                    {
+                        s_tag: 'label',
+                        class: 'o_dxf2scad__upload_label',
+                        'v-if': 'b_round_mode',
+                        a_o: [
+                            {
+                                s_tag: 'span',
+                                innerText: ' Cylinder radius (0 = auto from path width): ',
+                            },
+                            {
+                                s_tag: 'input',
+                                type: 'number',
+                                min: '0',
+                                step: '1',
+                                style: 'width:80px',
+                                'v-model.number': 'n_cylinder_radius',
+                            },
+                        ],
+                    },
+                ],
+            },
             // Upload sections
             {
                 s_tag: 'div',
@@ -734,6 +775,8 @@ let o_component__dxf2scad = {
             s_sweep_function: 'path_sweep',
             b_mirror_side_override: false,
             b_flip_y: false,
+            b_round_mode: false,
+            n_cylinder_radius: 0,
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
@@ -842,6 +885,8 @@ let o_component__dxf2scad = {
                         s_sweep_function: o_self.s_sweep_function,
                         b_mirror_side_override: o_self.b_mirror_side_override,
                         b_flip_y: o_self.b_flip_y,
+                        b_round_mode: o_self.b_round_mode,
+                        n_cylinder_radius: o_self.n_cylinder_radius,
                     })
                 );
 

@@ -316,13 +316,7 @@ let f_s_svg_profile_points = function(o_dxffile, n_point_per_mm = 1, b_mirror_si
     return a_s.join('\n');
 };
 
-let a_o_generation_type = [
-    { s_value: 'profile_revolve', s_label: 'Profile endpoint revolve — profile revolved around X axis' },
-    { s_value: 'simple', s_label: 'Simple — all entities, no endpoint revolves, no joints, no remover' },
-    { s_value: 'simple_endpoints', s_label: 'Simple — all entities, endpoint revolves, no joints, no remover' },
-    { s_value: 'simple_endpoints_joints', s_label: 'Simple — all entities, endpoint revolves, joints, no remover' },
-    { s_value: 'simple_endpoints_joints_remover', s_label: 'Simple — all entities, endpoint revolves, joints, remover' },
-];
+// Generation type is now derived from feature checkboxes
 
 let o_component__dxf2scad = {
     name: 'component-dxf2scad',
@@ -334,27 +328,45 @@ let o_component__dxf2scad = {
                 s_tag: 'h2',
                 innerText: 'DXF to OpenSCAD',
             },
-            // Generation type selector
+            // Generation feature checkboxes
             {
                 s_tag: 'div',
                 class: 'o_dxf2scad__upload_row',
+                style: 'display:flex; gap:16px; flex-wrap:wrap;',
                 a_o: [
                     {
-                        s_tag: 'div',
-                        class: 'o_dxf2scad__upload_label',
-                        innerText: 'Generation type',
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            { s_tag: 'input', type: 'checkbox', checked: true, disabled: true },
+                            { s_tag: 'span', innerText: ' All entities' },
+                        ],
                     },
                     {
-                        s_tag: 'select',
-                        'v-model': 's_generation_type',
-                        class: 'o_dxf2scad__select',
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            {
-                                s_tag: 'option',
-                                'v-for': 'o_type in a_o_generation_type',
-                                ':value': 'o_type.s_value',
-                                innerText: '{{ o_type.s_label }}',
-                            },
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_endpoint_revolves' },
+                            { s_tag: 'span', innerText: ' Endpoint revolves' },
+                        ],
+                    },
+                    {
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_joints' },
+                            { s_tag: 'span', innerText: ' Joints' },
+                        ],
+                    },
+                    {
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_remover' },
+                            { s_tag: 'span', innerText: ' Remover' },
+                        ],
+                    },
+                    {
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
+                        a_o: [
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_profile_revolve_only' },
+                            { s_tag: 'span', innerText: ' Profile revolve only' },
                         ],
                     },
                 ],
@@ -383,7 +395,7 @@ let o_component__dxf2scad = {
             {
                 s_tag: 'div',
                 class: 'o_dxf2scad__upload_row',
-                'v-if': "s_generation_type !== 'profile_revolve'",
+                'v-if': "!b_profile_revolve_only",
                 a_o: [
                     {
                         s_tag: 'div',
@@ -554,7 +566,7 @@ let o_component__dxf2scad = {
                     // Profile Remover (only for full mode)
                     {
                         s_tag: 'div',
-                        'v-if': "s_generation_type === 'simple_endpoints_joints_remover'",
+                        'v-if': "b_remover && !b_profile_revolve_only",
                         class: 'o_dxf2scad__upload_group',
                         a_o: [
                             {
@@ -616,7 +628,7 @@ let o_component__dxf2scad = {
                     // Path
                     {
                         s_tag: 'div',
-                        'v-if': "s_generation_type !== 'profile_revolve'",
+                        'v-if': "!b_profile_revolve_only",
                         class: 'o_dxf2scad__upload_group',
                         a_o: [
                             {
@@ -769,8 +781,10 @@ let o_component__dxf2scad = {
     data: function() {
         return {
             o_state: o_state,
-            s_generation_type: 'simple',
-            a_o_generation_type,
+            b_endpoint_revolves: true,
+            b_joints: true,
+            b_remover: false,
+            b_profile_revolve_only: false,
             n_point_per_mm: 1,
             s_sweep_function: 'path_sweep',
             b_mirror_side_override: false,
@@ -787,6 +801,15 @@ let o_component__dxf2scad = {
         };
     },
     computed: {
+        s_generation_type: function() {
+            if (this.b_profile_revolve_only) return 'profile_revolve';
+            // Joints mode always includes endpoint revolves
+            if (this.b_joints || this.b_remover) {
+                return this.b_remover ? 'simple_endpoints_joints_remover' : 'simple_endpoints_joints';
+            }
+            if (this.b_endpoint_revolves) return 'simple_endpoints';
+            return 'simple';
+        },
         a_o_dxffile__all: function() {
             return o_state[f_s_name_table__from_o_model(o_model__o_dxffile)] || [];
         },
@@ -822,9 +845,9 @@ let o_component__dxf2scad = {
         b_can_generate: function() {
             if (this.b_generating) return false;
             if (!this.n_id__profile) return false;
-            if (this.s_generation_type === 'profile_revolve') return true;
+            if (this.b_profile_revolve_only) return true;
             if (!this.n_id__path) return false;
-            if (this.s_generation_type === 'simple_endpoints_joints_remover' && !this.n_id__profile_remover) return false;
+            if (this.b_remover && !this.n_id__profile_remover) return false;
             return true;
         },
     },

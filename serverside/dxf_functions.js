@@ -1637,25 +1637,35 @@ function wrap_2d(p) =
     let(angle = (p[0] - cyl_x_min) / cyl_x_range * 360)
     [cyl_radius * cos(angle), cyl_radius * sin(angle), p[1]];
 
+// Normal pointing radially outward from cylinder center
+function wrap_normal(p) =
+    let(angle = (p[0] - cyl_x_min) / cyl_x_range * 360)
+    [cos(angle), sin(angle), 0];
+
 `;
 
-    // Generate wrapped path arrays for each entity
+    // Generate wrapped path arrays and normals for each entity
+    let f_s_normals = (a_pts) => a_pts.map(p => `wrap_normal([${p.n_x}, ${p.n_y}])`).join(', ');
+
     for(let n_idx = 0; n_idx < a_o_entity_line.length; n_idx++){
         let a_pts = f_a_o_line_samples(a_o_entity_line[n_idx], n_samples_per_unit);
         let s_pts = a_pts.map(p => `wrap_2d([${p.n_x}, ${p.n_y}])`).join(', ');
         s_defs += `line_${n_idx} = [${s_pts}];\n`;
+        s_defs += `line_${n_idx}_normals = [${f_s_normals(a_pts)}];\n`;
     }
 
     for(let n_idx = 0; n_idx < a_o_entity_arc.length; n_idx++){
         let a_pts = f_a_o_arc_samples(a_o_entity_arc[n_idx], n_samples_per_unit);
         let s_pts = a_pts.map(p => `wrap_2d([${p.n_x}, ${p.n_y}])`).join(', ');
         s_defs += `arc_path_${n_idx} = [${s_pts}];\n`;
+        s_defs += `arc_path_${n_idx}_normals = [${f_s_normals(a_pts)}];\n`;
     }
 
     for(let n_idx = 0; n_idx < a_o_entity_circle.length; n_idx++){
         let a_pts = f_a_o_circle_samples(a_o_entity_circle[n_idx], n_samples_per_unit);
         let s_pts = a_pts.map(p => `wrap_2d([${p.n_x}, ${p.n_y}])`).join(', ');
         s_defs += `circle_path_${n_idx} = [${s_pts}];\n`;
+        s_defs += `circle_path_${n_idx}_normals = [${f_s_normals(a_pts)}];\n`;
     }
 
     // Wrap endpoint positions
@@ -1703,14 +1713,15 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let x1 = cp.n_x + dx * n_ext, y1 = cp.n_y + dy * n_ext;
 
         if(b_round_mode){
-            // Sample extension line and wrap to cylinder
-            let a_pts = [];
+            let a_pts = [], a_nrm = [];
             let n_samples = 20;
             for(let i = 0; i <= n_samples; i++){
                 let t = i / n_samples;
-                a_pts.push(`wrap_2d([${x0 + (x1 - x0) * t}, ${y0 + (y1 - y0) * t}])`);
+                let px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t;
+                a_pts.push(`wrap_2d([${px}, ${py}])`);
+                a_nrm.push(`wrap_normal([${px}, ${py}])`);
             }
-            return `path_sweep(profile_mirroredx, [${a_pts.join(', ')}]);`;
+            return `path_sweep(profile_mirroredx, [${a_pts.join(', ')}], method="manual", normal=[${a_nrm.join(', ')}]);`;
         }
         if(s_sweep_function === 'path_sweep'){
             return `path_sweep(profile_mirroredx, [[${x0}, ${y0}, 0], [${x1}, ${y1}, 0]]);`;
@@ -1867,12 +1878,13 @@ $fn = 32;
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
+        if(b_round_mode) return `path_sweep(profile_mirroredx, line_${n_idx}, method="manual", normal=line_${n_idx}_normals);`;
         return `path_sweep(profile_mirroredx, line_${n_idx});`;
     }).join('\n    ')}
 
     // Sweep arcs
     ${a_o_entity_arc.map((o, n_idx) => {
-        if(b_round_mode) return `path_sweep(profile_mirroredx, arc_path_${n_idx});`;
+        if(b_round_mode) return `path_sweep(profile_mirroredx, arc_path_${n_idx}, method="manual", normal=arc_path_${n_idx}_normals);`;
         return b_3d
             ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
             : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
@@ -1880,7 +1892,7 @@ union() {
 
     // Sweep circles
     ${a_o_entity_circle.map((o, n_idx) => {
-        if(b_round_mode) return `path_sweep(profile_mirroredx, circle_path_${n_idx}, closed=true);`;
+        if(b_round_mode) return `path_sweep(profile_mirroredx, circle_path_${n_idx}, closed=true, method="manual", normal=circle_path_${n_idx}_normals);`;
         return b_3d
             ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
             : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
@@ -1942,13 +1954,15 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         let x0 = cp.n_x, y0 = cp.n_y;
         let x1 = cp.n_x + dx * n_ext, y1 = cp.n_y + dy * n_ext;
         if(b_round_mode){
-            let a_pts = [];
+            let a_pts = [], a_nrm = [];
             let n_samples = 20;
             for(let i = 0; i <= n_samples; i++){
                 let t = i / n_samples;
-                a_pts.push(`wrap_2d([${x0 + (x1 - x0) * t}, ${y0 + (y1 - y0) * t}])`);
+                let px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t;
+                a_pts.push(`wrap_2d([${px}, ${py}])`);
+                a_nrm.push(`wrap_normal([${px}, ${py}])`);
             }
-            return `path_sweep(${s_profile_var}, [${a_pts.join(', ')}]);`;
+            return `path_sweep(${s_profile_var}, [${a_pts.join(', ')}], method="manual", normal=[${a_nrm.join(', ')}]);`;
         }
         if(b_3d){
             return `${s_sweep_function}(${s_profile_var}, [[${x0}, ${y0}, 0], [${x1}, ${y1}, 0]]);`;
@@ -2023,12 +2037,13 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         return `
         // Sweep lines
         ${a_o_entity_line.map((o, n_idx) => {
+            if(b_round_mode) return `path_sweep(${s_profile_var}, line_${n_idx}, method="manual", normal=line_${n_idx}_normals);`;
             return `path_sweep(${s_profile_var}, line_${n_idx});`;
         }).join('\n        ')}
 
         // Sweep arcs
         ${a_o_entity_arc.map((o, n_idx) => {
-            if(b_round_mode) return `path_sweep(${s_profile_var}, arc_path_${n_idx});`;
+            if(b_round_mode) return `path_sweep(${s_profile_var}, arc_path_${n_idx}, method="manual", normal=arc_path_${n_idx}_normals);`;
             return b_3d
                 ? `sweep_arc(${s_profile_var}, arc_${n_idx});`
                 : `sweep_arc_2d(${s_profile_var}, arc_${n_idx});`;
@@ -2036,7 +2051,7 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
 
         // Sweep circles
         ${a_o_entity_circle.map((o, n_idx) => {
-            if(b_round_mode) return `path_sweep(${s_profile_var}, circle_path_${n_idx}, closed=true);`;
+            if(b_round_mode) return `path_sweep(${s_profile_var}, circle_path_${n_idx}, closed=true, method="manual", normal=circle_path_${n_idx}_normals);`;
             return b_3d
                 ? `sweep_circle(${s_profile_var}, circle_${n_idx});`
                 : `sweep_circle_2d(${s_profile_var}, circle_${n_idx});`;

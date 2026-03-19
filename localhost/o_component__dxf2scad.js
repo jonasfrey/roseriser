@@ -908,6 +908,7 @@ let o_component__dxf2scad = {
                         s_sweep_function: o_self.s_sweep_function,
                         b_mirror_side_override: o_self.b_mirror_side_override,
                         b_flip_y: o_self.b_flip_y,
+                        b_endpoint_revolves: o_self.b_endpoint_revolves,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
                     })

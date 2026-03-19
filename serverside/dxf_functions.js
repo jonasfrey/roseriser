@@ -1674,7 +1674,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1754,9 +1754,9 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let cp = o_conn.o_trn_vec3_connected;
         let n_ang = o_conn.n_ang_rad_between_entities;
 
-        // Non-flowing tangent (angle ≈ 0°): entities double back — use endpoint revolves
-        // Directions point INTO entities, but caps should face AWAY → add 180°
+        // Non-flowing tangent (angle ≈ 0°): entities double back — use endpoint revolves if enabled
         if(n_ang < (15 * Math.PI / 180)){
+            if(!b_endpoint_revolves) return '';
             let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
             let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
             return `    // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
@@ -1772,15 +1772,12 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
 
         if(n_entities_at_point > 2){
-            // 3+ entities at this point: only generate joints for ~90° pairs
             let n_deg = n_ang * 180 / Math.PI;
             if(Math.abs(n_deg - 90) > 15) return '';
         } else {
-            // Exactly 2 entities: generate joint unless point lies on another entity
             if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
         }
 
-        // Angled connection: use intersection of extended sweeps
         let s_ext_a = f_s_extension_sweep(o_conn, o_conn.o_entity_a, o_conn.o_vec3_dir_entity_a, n_idx, 'a');
         let s_ext_b = f_s_extension_sweep(o_conn, o_conn.o_entity_b, o_conn.o_vec3_dir_entity_b, n_idx, 'b');
 
@@ -1899,7 +1896,7 @@ union() {
     }).join('\n    ')}
 
     // Endpoint caps
-    ${b_round_mode ? '// (endpoint caps disabled in round mode)' : a_o_endpoint.map((o, idx) => {
+    ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
         return `translate(endpoint_${idx})
     rotate([0, 0, endpoint_${idx}_angle])
     profile_endpoint_cap();`;
@@ -1914,7 +1911,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1995,9 +1992,9 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
             let cp = o_conn.o_trn_vec3_connected;
             let n_ang = o_conn.n_ang_rad_between_entities;
 
-            // Non-flowing tangent (angle ≈ 0°): use endpoint revolves
-            // Directions point INTO entities, but caps should face AWAY → add 180°
+            // Non-flowing tangent (angle ≈ 0°): use endpoint revolves if enabled
             if(n_ang < (15 * Math.PI / 180)){
+                if(!b_endpoint_revolves) return '';
                 let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
                 let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
                 return `        // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
@@ -2147,7 +2144,7 @@ difference() {
 ${f_s_sweep_block('profile_mirroredx')}
 
         // Endpoint caps
-        ${b_round_mode ? '// (endpoint caps disabled in round mode)' : a_o_endpoint.map((o, idx) => {
+        ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
             return `translate(endpoint_${idx})
         rotate([0, 0, endpoint_${idx}_angle])
         profile_endpoint_cap();`;
@@ -2163,7 +2160,7 @@ ${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
 ${f_s_sweep_block('profile_remover_mirroredx')}
 
         // Endpoint caps (remover)
-        ${b_round_mode ? '// (endpoint caps disabled in round mode)' : a_o_endpoint.map((o, idx) => {
+        ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
             return `translate(endpoint_${idx})
         rotate([0, 0, endpoint_${idx}_angle])
         profile_remover_endpoint_cap();`;

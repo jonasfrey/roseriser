@@ -2155,7 +2155,7 @@ ${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
     }
 
     // Remover: same geometry but with remover profile, offset to keep DXF-relative position
-    translate([0, 0, profile_remover_trn_y])
+    ${b_round_mode ? '' : 'translate([0, 0, profile_remover_trn_y])'}
     union() {
 ${f_s_sweep_block('profile_remover_mirroredx')}
 

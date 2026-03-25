@@ -2060,6 +2060,11 @@ include <BOSL2/std.scad>
 
 ${s_scad_profile}
 ${s_scad_profile_remover}
+
+// Align remover profile relative to main profile (restore DXF-relative Y positioning)
+_remover_y_offset = (profile_remover_trn_y + profile_remover_height) - (profile_trn_y + profile_height);
+profile_remover_mirroredx_aligned = [for (p = profile_remover_mirroredx) [p[0], p[1] + _remover_y_offset]];
+
 ${b_round_mode ? o_round.s_defs : `
 // ===== PATH ENTITY DEFINITIONS =====
 ${a_o_entity_line.map((o, n_idx) => {
@@ -2154,10 +2159,9 @@ ${f_s_sweep_block('profile_mirroredx')}
 ${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
     }
 
-    // Remover: same geometry but with remover profile, offset to keep DXF-relative position
-    ${b_round_mode ? '' : 'translate([0, 0, profile_remover_trn_y])'}
+    // Remover: same geometry but with aligned remover profile (DXF-relative positioning)
     union() {
-${f_s_sweep_block('profile_remover_mirroredx')}
+${f_s_sweep_block('profile_remover_mirroredx_aligned')}
 
         // Endpoint caps (remover)
         ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
@@ -2167,7 +2171,7 @@ ${f_s_sweep_block('profile_remover_mirroredx')}
         }).join('\n        ')}
 
         // Connection point joints (remover)
-${f_s_joints('profile_remover_mirroredx', 'profile_remover_endpoint_cap')}
+${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap')}
     }
 }
 `;

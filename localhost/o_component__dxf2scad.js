@@ -101,6 +101,115 @@ let f_s_svg_from_o_dxffile = function(o_dxffile){
     return f_s_svg_from_a_o_entity(a_o_entity);
 };
 
+let f_s_svg_entities_layer = function(a_o_entity, s_stroke, s_point_fill, n_sw, n_r){
+    let a_s = [];
+    let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
+    let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
+    let a_o_circle = a_o_entity.filter(function(o){ return o.s_type === "CIRCLE"; });
+
+    for(let o of a_o_line){
+        a_s.push('<line x1="' + o.o_vec3_trn_start.n_x + '" y1="' + (-o.o_vec3_trn_start.n_y) + '" x2="' + o.o_vec3_trn_end.n_x + '" y2="' + (-o.o_vec3_trn_end.n_y) + '" stroke="' + s_stroke + '" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
+    }
+    for(let o of a_o_arc){
+        let n_sx = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
+        let n_sy = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
+        let n_ex = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
+        let n_ey = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
+        let n_sweep = o.n_ang_deg_end - o.n_ang_deg_start;
+        if(n_sweep < 0) n_sweep += 360;
+        let n_large = n_sweep > 180 ? 1 : 0;
+        a_s.push('<path d="M ' + n_sx + ' ' + (-n_sy) + ' A ' + o.n_radius + ' ' + o.n_radius + ' 0 ' + n_large + ' 0 ' + n_ex + ' ' + (-n_ey) + '" stroke="' + s_stroke + '" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
+    }
+    for(let o of a_o_circle){
+        a_s.push('<circle cx="' + o.o_vec3_trn.n_x + '" cy="' + (-o.o_vec3_trn.n_y) + '" r="' + o.n_radius + '" stroke="' + s_stroke + '" stroke-width="' + n_sw + '" fill="none"/>');
+    }
+
+    let a_o_point = [];
+    for(let o of a_o_line){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
+    for(let o of a_o_arc){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
+    for(let o_p of a_o_point){
+        a_s.push('<circle cx="' + o_p.n_x + '" cy="' + (-o_p.n_y) + '" r="' + n_r + '" fill="' + s_point_fill + '" opacity="0.7"/>');
+    }
+    return a_s.join('\n');
+};
+
+let f_o_bbox_from_a_o_entity = function(a_o_entity){
+    let n_x_min = Infinity, n_x_max = -Infinity;
+    let n_y_min = Infinity, n_y_max = -Infinity;
+    let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
+    let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
+    let a_o_circle = a_o_entity.filter(function(o){ return o.s_type === "CIRCLE"; });
+
+    for(let o of a_o_line){
+        n_x_min = Math.min(n_x_min, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
+        n_x_max = Math.max(n_x_max, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
+        n_y_min = Math.min(n_y_min, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
+        n_y_max = Math.max(n_y_max, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
+    }
+    for(let o of a_o_arc){
+        let n_sx = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
+        let n_sy = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
+        let n_ex = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
+        let n_ey = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
+        n_x_min = Math.min(n_x_min, n_sx, n_ex);
+        n_x_max = Math.max(n_x_max, n_sx, n_ex);
+        n_y_min = Math.min(n_y_min, n_sy, n_ey);
+        n_y_max = Math.max(n_y_max, n_sy, n_ey);
+        for(let n_deg of [0, 90, 180, 270]){
+            let n_d = n_deg;
+            if(n_d < o.n_ang_deg_start) n_d += 360;
+            if(n_d >= o.n_ang_deg_start && n_d <= o.n_ang_deg_end){
+                let n_px = o.o_vec3_trn.n_x + o.n_radius * Math.cos(n_deg * Math.PI / 180);
+                let n_py = o.o_vec3_trn.n_y + o.n_radius * Math.sin(n_deg * Math.PI / 180);
+                n_x_min = Math.min(n_x_min, n_px);
+                n_x_max = Math.max(n_x_max, n_px);
+                n_y_min = Math.min(n_y_min, n_py);
+                n_y_max = Math.max(n_y_max, n_py);
+            }
+        }
+    }
+    for(let o of a_o_circle){
+        n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
+        n_x_max = Math.max(n_x_max, o.o_vec3_trn.n_x + o.n_radius);
+        n_y_min = Math.min(n_y_min, o.o_vec3_trn.n_y - o.n_radius);
+        n_y_max = Math.max(n_y_max, o.o_vec3_trn.n_y + o.n_radius);
+    }
+    return { n_x_min, n_x_max, n_y_min, n_y_max };
+};
+
+let f_s_svg_combined = function(o_dxffile_profile, o_dxffile_remover){
+    if(!o_dxffile_profile || !o_dxffile_profile.s_json_a_o_entity) return '';
+    if(!o_dxffile_remover || !o_dxffile_remover.s_json_a_o_entity) return '';
+
+    let a_o_entity_profile = JSON.parse(o_dxffile_profile.s_json_a_o_entity);
+    let a_o_entity_remover = JSON.parse(o_dxffile_remover.s_json_a_o_entity);
+
+    let o_bb_p = f_o_bbox_from_a_o_entity(a_o_entity_profile);
+    let o_bb_r = f_o_bbox_from_a_o_entity(a_o_entity_remover);
+
+    let n_x_min = Math.min(o_bb_p.n_x_min, o_bb_r.n_x_min);
+    let n_x_max = Math.max(o_bb_p.n_x_max, o_bb_r.n_x_max);
+    let n_y_min = Math.min(o_bb_p.n_y_min, o_bb_r.n_y_min);
+    let n_y_max = Math.max(o_bb_p.n_y_max, o_bb_r.n_y_max);
+
+    if(!isFinite(n_x_min)) return '';
+
+    let n_pad = Math.max(n_x_max - n_x_min, n_y_max - n_y_min) * 0.1 || 1;
+    let n_vb_x = n_x_min - n_pad;
+    let n_vb_y = -(n_y_max + n_pad);
+    let n_vb_w = (n_x_max - n_x_min) + n_pad * 2;
+    let n_vb_h = (n_y_max - n_y_min) + n_pad * 2;
+    let n_sw = Math.max(n_vb_w, n_vb_h) * 0.015;
+    let n_r = n_sw * 1.5;
+
+    let a_s = [];
+    a_s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + n_vb_x + ' ' + n_vb_y + ' ' + n_vb_w + ' ' + n_vb_h + '">');
+    a_s.push(f_s_svg_entities_layer(a_o_entity_profile, '#8b74ea', '#fc8181', n_sw, n_r));
+    a_s.push(f_s_svg_entities_layer(a_o_entity_remover, '#fc8181', '#ed8936', n_sw, n_r));
+    a_s.push('</svg>');
+    return a_s.join('\n');
+};
+
 // ===== PROFILE POINT COMPUTATION (client-side mirror of server logic) =====
 
 let f_a_o_point__from_entity_directed = function(o_ent, b_reversed, n_point_per_mm){
@@ -657,6 +766,30 @@ let o_component__dxf2scad = {
                             },
                         ],
                     },
+                    // Combined profile + remover preview
+                    {
+                        s_tag: 'div',
+                        'v-if': 'o_svg__combined',
+                        class: 'o_dxf2scad__upload_group',
+                        a_o: [
+                            {
+                                s_tag: 'div',
+                                class: 'o_dxf2scad__upload_row',
+                                a_o: [
+                                    {
+                                        s_tag: 'div',
+                                        class: 'o_dxf2scad__upload_label',
+                                        innerText: 'Profile + Remover',
+                                    },
+                                ],
+                            },
+                            {
+                                s_tag: 'div',
+                                class: 'o_dxf2scad__preview o_dxf2scad__preview--standalone',
+                                'v-html': 'o_svg__combined',
+                            },
+                        ],
+                    },
                     // Path
                     {
                         s_tag: 'div',
@@ -873,6 +1006,11 @@ let o_component__dxf2scad = {
         o_svg__profile_remover_points: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile_remover; }.bind(this));
             return o_dxf ? f_s_svg_profile_points(o_dxf, this.n_point_per_mm, this.b_mirror_side_override, this.b_flip_y) : '';
+        },
+        o_svg__combined: function() {
+            let o_dxf_p = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile; }.bind(this));
+            let o_dxf_r = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__profile_remover; }.bind(this));
+            return f_s_svg_combined(o_dxf_p, o_dxf_r);
         },
         o_svg__path: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));

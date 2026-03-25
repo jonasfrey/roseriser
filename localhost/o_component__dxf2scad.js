@@ -842,20 +842,14 @@ let o_component__dxf2scad = {
                     },
                 ],
             },
-            // Generate button
+            // Status
             {
                 s_tag: 'div',
+                'v-if': 's_status',
                 class: 'o_dxf2scad__action_row',
                 a_o: [
                     {
                         s_tag: 'div',
-                        ':class': "'interactable o_dxf2scad__generate_btn' + (b_can_generate ? '' : ' disabled')",
-                        'v-on:click': 'f_generate_scad',
-                        innerText: "{{ b_generating ? 'Generating...' : 'Generate OpenSCAD' }}",
-                    },
-                    {
-                        s_tag: 'div',
-                        'v-if': 's_status',
                         class: 'o_dxf2scad__status',
                         innerText: '{{ s_status }}',
                     },
@@ -1017,12 +1011,27 @@ let o_component__dxf2scad = {
             return o_dxf ? f_s_svg_from_o_dxffile(o_dxf) : '';
         },
         b_can_generate: function() {
-            if (this.b_generating) return false;
             if (!this.n_id__profile) return false;
             if (this.b_profile_revolve_only) return true;
             if (!this.n_id__path) return false;
             if (this.b_remover && !this.n_id__profile_remover) return false;
             return true;
+        },
+        s_generation_inputs: function() {
+            if (!this.b_can_generate) return null;
+            return JSON.stringify({
+                s_generation_type: this.s_generation_type,
+                n_id__profile: this.n_id__profile,
+                n_id__profile_remover: this.n_id__profile_remover,
+                n_id__path: this.n_id__path,
+                n_point_per_mm: this.n_point_per_mm,
+                s_sweep_function: this.s_sweep_function,
+                b_mirror_side_override: this.b_mirror_side_override,
+                b_flip_y: this.b_flip_y,
+                b_endpoint_revolves: this.b_endpoint_revolves,
+                b_round_mode: this.b_round_mode,
+                n_cylinder_radius: this.n_cylinder_radius,
+            });
         },
     },
     watch: {
@@ -1033,6 +1042,19 @@ let o_component__dxf2scad = {
             this.n_id__profile = o_tpl.n_id_dxffile_profile;
             this.n_id__profile_remover = o_tpl.n_id_dxffile_profile_remover;
             this.b_remover = true;
+        },
+        s_generation_inputs: function(s_val) {
+            let o_self = this;
+            if (o_self._n_id_debounce) clearTimeout(o_self._n_id_debounce);
+            if (s_val === null) {
+                o_self.s_scad_output = '';
+                o_self.s_path_scad = '';
+                o_self.s_status = '';
+                return;
+            }
+            o_self._n_id_debounce = setTimeout(function() {
+                o_self.f_generate_scad();
+            }, 300);
         },
     },
     methods: {
@@ -1074,10 +1096,10 @@ let o_component__dxf2scad = {
 
         f_generate_scad: async function() {
             let o_self = this;
-            if (!o_self.b_can_generate) return;
+            if (!o_self.b_can_generate || o_self.b_generating) return;
 
             o_self.b_generating = true;
-            o_self.s_status = 'Generating OpenSCAD script...';
+            o_self.s_status = 'Generating...';
             o_self.s_scad_output = '';
             o_self.s_path_scad = '';
 

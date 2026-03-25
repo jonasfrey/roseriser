@@ -8,6 +8,7 @@ import {
     o_wsmsg__generate_scad,
     f_s_name_table__from_o_model,
     o_model__o_dxffile,
+    o_model__o_profile_template,
 } from './constructors.js';
 
 let f_s_svg_from_a_o_entity = function(a_o_entity){
@@ -327,6 +328,37 @@ let o_component__dxf2scad = {
             {
                 s_tag: 'h2',
                 innerText: 'DXF to OpenSCAD',
+            },
+            // Profile template selector
+            {
+                s_tag: 'div',
+                'v-if': 'a_o_profile_template.length > 0',
+                class: 'o_dxf2scad__upload_row',
+                a_o: [
+                    {
+                        s_tag: 'div',
+                        class: 'o_dxf2scad__upload_label',
+                        innerText: 'Profile Template',
+                    },
+                    {
+                        s_tag: 'select',
+                        'v-model': 'n_id__profile_template',
+                        class: 'o_dxf2scad__select',
+                        a_o: [
+                            {
+                                s_tag: 'option',
+                                ':value': 'null',
+                                innerText: '-- none (manual selection) --',
+                            },
+                            {
+                                s_tag: 'option',
+                                'v-for': 'o_tpl in a_o_profile_template',
+                                ':value': 'o_tpl.n_id',
+                                innerText: '{{ o_tpl.s_name }}',
+                            },
+                        ],
+                    },
+                ],
             },
             // Generation feature checkboxes
             {
@@ -791,6 +823,7 @@ let o_component__dxf2scad = {
             b_flip_y: false,
             b_round_mode: false,
             n_cylinder_radius: 0,
+            n_id__profile_template: null,
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
@@ -809,6 +842,9 @@ let o_component__dxf2scad = {
             }
             if (this.b_endpoint_revolves) return 'simple_endpoints';
             return 'simple';
+        },
+        a_o_profile_template: function() {
+            return o_state[f_s_name_table__from_o_model(o_model__o_profile_template)] || [];
         },
         a_o_dxffile__all: function() {
             return o_state[f_s_name_table__from_o_model(o_model__o_dxffile)] || [];
@@ -849,6 +885,16 @@ let o_component__dxf2scad = {
             if (!this.n_id__path) return false;
             if (this.b_remover && !this.n_id__profile_remover) return false;
             return true;
+        },
+    },
+    watch: {
+        n_id__profile_template: function(n_id) {
+            if (n_id === null) return;
+            let o_tpl = this.a_o_profile_template.find(function(o) { return o.n_id === n_id; });
+            if (!o_tpl) return;
+            this.n_id__profile = o_tpl.n_id_dxffile_profile;
+            this.n_id__profile_remover = o_tpl.n_id_dxffile_profile_remover;
+            this.b_remover = true;
         },
     },
     methods: {

@@ -29,6 +29,7 @@ import {
 import { o_component__data } from './o_component__data.js';
 import { o_component__filebrowser } from './o_component__filebrowser.js';
 import { o_component__dxf2scad } from './o_component__dxf2scad.js';
+import { o_component__profile_templates } from './o_component__profile_templates.js';
 import './css_helper.js';
 
 import { o_logmsg__run_command } from "./runtimedata.js";
@@ -56,6 +57,11 @@ let o_state = reactive({
             path: '/dxf2scad',
             name: 'dxf2scad',
             component: markRaw(o_component__dxf2scad),
+        },
+        {
+            path: '/templates',
+            name: 'templates',
+            component: markRaw(o_component__profile_templates),
         },
     ],
     a_o_model,

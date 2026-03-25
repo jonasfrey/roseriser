@@ -119,6 +119,18 @@ let o_model__o_dxffile = f_o_model({
     ]
 });
 
+let o_model__o_profile_template = f_o_model({
+    s_name: 'o_profile_template',
+    a_o_property: [
+        f_o_model_prop__default_id(s_name_prop_id),
+        f_o_property('s_name', 'string', (s)=>{return s!==''}),
+        f_o_model_prop__default_id('n_id_dxffile_profile'),
+        f_o_model_prop__default_id('n_id_dxffile_profile_remover'),
+        f_o_model_prop__timestamp_default(s_name_prop_ts_created),
+        f_o_model_prop__timestamp_default(s_name_prop_ts_updated),
+    ]
+});
+
 
 let s_o_logmsg_s_type__log = 'log';
 let s_o_logmsg_s_type__error = 'error';
@@ -137,6 +149,7 @@ let a_o_model = [
     o_model__o_keyvalpair,
     o_model__o_utterance,
     o_model__o_dxffile,
+    o_model__o_profile_template,
 ];
 
 
@@ -218,6 +231,7 @@ export {
     o_model__o_keyvalpair,
     o_model__o_utterance,
     o_model__o_dxffile,
+    o_model__o_profile_template,
     a_o_model,
     f_o_property,
     f_o_model,

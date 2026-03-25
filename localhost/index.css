@@ -684,15 +684,18 @@ main {
 }
 
 .o_profile_templates__item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--c-border);
 }
 
 .o_profile_templates__item:last-child {
     border-bottom: none;
+}
+
+.o_profile_templates__item_row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .o_profile_templates__item_name {
@@ -705,6 +708,11 @@ main {
     gap: 0.5rem;
     flex: 1;
     flex-wrap: wrap;
+}
+
+.o_profile_templates__item_actions {
+    display: flex;
+    gap: 0.35rem;
 }
 
 .o_profile_templates__tag {
@@ -720,6 +728,7 @@ main {
     color: var(--c-danger);
 }
 
+.o_profile_templates__edit_btn,
 .o_profile_templates__delete_btn {
     padding: 0.15rem 0.5rem;
     border-radius: var(--r);
@@ -727,6 +736,30 @@ main {
     color: var(--c-text-dim);
     border: 1px solid var(--c-border);
     font-size: 0.75rem;
+}
+
+.o_profile_templates__edit_form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.o_profile_templates__save_btn {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--r);
+    background: var(--c-accent);
+    color: var(--c-bg);
+    font-size: 0.8rem;
+}
+
+.o_profile_templates__cancel_btn {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--r);
+    background: var(--c-surface);
+    color: var(--c-text-dim);
+    border: 1px solid var(--c-border);
+    font-size: 0.8rem;
 }
 
 .o_profile_templates__empty {

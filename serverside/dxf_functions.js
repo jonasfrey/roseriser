@@ -322,6 +322,9 @@ let f_a_o_entity_connection_from_a_o_entity = function(a_o_entity){
                     // Flowing/smooth: directions are opposite (≈180°) → tangent
                     // Non-flowing: directions are similar (≈0°) → not tangent, needs joint/revolve
                     let b_tangent = n_ang_rad_between > (165 * Math.PI / 180);
+                    // Collinear: entities flow into each other with (nearly) the same direction
+                    // No revolve needed at these points since the path is continuous
+                    let b_collinear = n_ang_rad_between > (179 * Math.PI / 180);
 
                     let n_avg_x = (o_vec3_dir_a.n_x + o_vec3_dir_b.n_x) / 2;
                     let n_avg_y = (o_vec3_dir_a.n_y + o_vec3_dir_b.n_y) / 2;
@@ -336,6 +339,7 @@ let f_a_o_entity_connection_from_a_o_entity = function(a_o_entity){
                         n_ang_deg_z_entity_b: n_ang_deg_z,
                         o_trn_vec3_connected: o_vec3_conn,
                         b_tangent,
+                        b_collinear,
                         n_ang_rad_between_entities: n_ang_rad_between
                     });
                     break;
@@ -1027,8 +1031,8 @@ let f_s_scad_path_sweep_sketch = function(
     let s_scad_profile_functions_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch_profile_remover, s_name_sketch_profile_remover);
     let s_scad_entity_defs = f_s_scad_var_declation_sketch_entities(o_sketch_sweep_paths.a_o_entity);
 
-    // Tangent connections
-    let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o => o.b_tangent);
+    // Tangent connections (exclude collinear — those flow smoothly and need no revolve)
+    let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o => o.b_tangent && !o.b_collinear);
     let a_o_entity_connection__non_tangent_all = o_sketch_sweep_paths.a_o_entity_connection.filter(o => !o.b_tangent);
 
     // Deduplicate non-tangent connections

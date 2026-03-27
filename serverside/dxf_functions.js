@@ -2102,6 +2102,19 @@ ${s_scad_profile_remover}
 _remover_y_offset = (profile_remover_trn_y + profile_remover_height) - (profile_trn_y + profile_height);
 profile_remover_mirroredx_aligned = [for (p = profile_remover_mirroredx) [p[0], p[1] + _remover_y_offset]];
 
+// Aligned remover revolve profile for endpoint caps
+_remover_aligned_y_min = min([for (p = profile_remover_mirroredx_aligned) p[1]]);
+profile_remover_for_x_revolve_aligned = [for (p = profile_remover_mirroredx_aligned)
+    [p[1] - _remover_aligned_y_min, p[0]]
+];
+
+module profile_remover_endpoint_cap_aligned(angle=90) {
+    translate([0, 0, _remover_aligned_y_min])
+    rotate([90, 0, 0])
+    rotate_extrude(angle=angle, convexity=10)
+    polygon(profile_remover_for_x_revolve_aligned);
+}
+
 ${b_round_mode ? o_round.s_defs : `
 // ===== PATH ENTITY DEFINITIONS =====
 ${a_o_entity_line.map((o, n_idx) => {
@@ -2200,15 +2213,15 @@ ${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
     union() {
 ${f_s_sweep_block('profile_remover_mirroredx_aligned')}
 
-        // Endpoint caps (remover)
+        // Endpoint caps (remover — using aligned revolve profile)
         ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
             return `translate(endpoint_${idx})
         rotate([0, 0, endpoint_${idx}_angle])
-        profile_remover_endpoint_cap();`;
+        profile_remover_endpoint_cap_aligned();`;
         }).join('\n        ')}
 
         // Connection point joints (remover)
-${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap')}
+${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap_aligned')}
     }
 }
 `;

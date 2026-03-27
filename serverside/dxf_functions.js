@@ -629,6 +629,34 @@ let f_a_a_o_vec3_trn_ordered_mirrored_at_mostleft_axis = function(a_a_o_vec3_trn
     return a_a_o_vec3_trn_mirrored;
 };
 
+// ===== FLOW-THROUGH POINTS =====
+// A point is "flow-through" if any pair of entities at that point is collinear.
+// Flow-through points are not true endpoints — the path continues through them.
+
+let f_a_o_vec3_flowthrough = function(a_o_entity_connection){
+    // Group connections by point position
+    let a_a_o_conn_by_point = [];
+    for(let o_conn of a_o_entity_connection){
+        let o_group = a_a_o_conn_by_point.find(g =>
+            f_b_vec3_equal(g[0].o_trn_vec3_connected, o_conn.o_trn_vec3_connected)
+        );
+        if(o_group){
+            o_group.push(o_conn);
+        } else {
+            a_a_o_conn_by_point.push([o_conn]);
+        }
+    }
+    // A point is flow-through if any connection there is collinear
+    let a_o_result = [];
+    for(let a_o_conns of a_a_o_conn_by_point){
+        let b_has_collinear = a_o_conns.some(o => o.b_collinear);
+        if(b_has_collinear){
+            a_o_result.push(a_o_conns[0].o_trn_vec3_connected);
+        }
+    }
+    return a_o_result;
+};
+
 // ===== UNCONNECTED ENDPOINTS =====
 
 let f_a_o_pointwithrotation_noconnection = function(a_o_entity, a_o_entity_connection){
@@ -674,6 +702,7 @@ let f_o_sketch_from_a_o_entity = function(a_o_entity, n_point_per_mm = 1){
     let a_o_pointwithrotation_noconnection__result = f_a_o_pointwithrotation_noconnection(
         a_o_entity, a_o_entity_connection
     );
+    let a_o_vec3_flowthrough = f_a_o_vec3_flowthrough(a_o_entity_connection);
 
     // collect all points for bounding box
     let a_o_vec3_trn = [];
@@ -702,6 +731,7 @@ let f_o_sketch_from_a_o_entity = function(a_o_entity, n_point_per_mm = 1){
         a_a_o_vec3_trn_ordered: a_a_o_vec3_trn_ordered__result,
         a_a_o_vec3_trn_ordered__mirrored,
         a_o_pointwithrotation_noconnection: a_o_pointwithrotation_noconnection__result,
+        a_o_vec3_flowthrough,
         a_o_vec3_trn,
         n_scl_x,
         n_scl_y,
@@ -1031,8 +1061,11 @@ let f_s_scad_path_sweep_sketch = function(
     let s_scad_profile_functions_remover = f_s_scad_profile_functions_from_o_sketch(o_sketch_profile_remover, s_name_sketch_profile_remover);
     let s_scad_entity_defs = f_s_scad_var_declation_sketch_entities(o_sketch_sweep_paths.a_o_entity);
 
-    // Tangent connections (exclude collinear — those flow smoothly and need no revolve)
-    let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o => o.b_tangent && !o.b_collinear);
+    // Tangent connections — exclude any at flow-through points (where any collinear pair exists)
+    let a_o_vec3_ft = o_sketch_sweep_paths.a_o_vec3_flowthrough || [];
+    let a_o_entity_connection__tangent = o_sketch_sweep_paths.a_o_entity_connection.filter(o =>
+        o.b_tangent && !a_o_vec3_ft.some(p => f_b_vec3_equal(p, o.o_trn_vec3_connected))
+    );
     let a_o_entity_connection__non_tangent_all = o_sketch_sweep_paths.a_o_entity_connection.filter(o => !o.b_tangent);
 
     // Deduplicate non-tangent connections

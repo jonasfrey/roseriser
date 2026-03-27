@@ -2022,7 +2022,8 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
     };
 
     // Generate joint blocks for a given profile variable and its endpoint cap module name
-    let f_s_joints = function(s_profile_var, s_cap_module){
+    // b_extend_only: if true, use plain extension sweeps instead of intersection (for remover)
+    let f_s_joints = function(s_profile_var, s_cap_module, b_extend_only = false){
         return a_o_connection.map((o_conn, n_idx) => {
             if(o_conn.b_tangent) return '';
 
@@ -2055,9 +2056,17 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
                 if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
             }
 
-            // Angled connection: intersection of extended sweeps
+            // Angled connection: extension sweeps
             let s_ext_a = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_a);
             let s_ext_b = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_b);
+
+            if(b_extend_only){
+                // Remover: just extend sweeps past the joint (no intersection needed)
+                return `        // Joint ${n_idx} (extensions)
+        ${s_ext_a}
+        ${s_ext_b}`;
+            }
+
             return `        // Joint ${n_idx}
         intersection() {
             ${s_ext_a}
@@ -2220,8 +2229,8 @@ ${f_s_sweep_block('profile_remover_mirroredx_aligned')}
         profile_remover_endpoint_cap_aligned();`;
         }).join('\n        ')}
 
-        // Connection point joints (remover)
-${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap_aligned')}
+        // Connection point joints (remover — extend sweeps past joint, no intersection)
+${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap_aligned', true)}
     }
 }
 `;

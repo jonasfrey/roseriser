@@ -1508,6 +1508,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
@@ -1872,6 +1874,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])`}
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
@@ -2143,6 +2147,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])`}
 difference() {
     // Main shape: sweeps + endpoint caps + joints
     union() {

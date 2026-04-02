@@ -499,6 +499,13 @@ let o_component__dxf2scad = {
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
+                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_right_angle_joints_only', ':disabled': 'b_profile_revolve_only || !b_joints' },
+                            { s_tag: 'span', innerText: ' Only right-angled joints' },
+                        ],
+                    },
+                    {
+                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
+                        a_o: [
                             { s_tag: 'input', type: 'checkbox', 'v-model': 'b_remover', ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' Remover' },
                         ],
@@ -942,6 +949,7 @@ let o_component__dxf2scad = {
             o_state: o_state,
             b_endpoint_revolves: true,
             b_joints: true,
+            b_right_angle_joints_only: false,
             b_remover: false,
             b_profile_revolve_only: false,
             n_point_per_mm: 1,
@@ -1029,6 +1037,7 @@ let o_component__dxf2scad = {
                 b_mirror_side_override: this.b_mirror_side_override,
                 b_flip_y: this.b_flip_y,
                 b_endpoint_revolves: this.b_endpoint_revolves,
+                b_right_angle_joints_only: this.b_right_angle_joints_only,
                 b_round_mode: this.b_round_mode,
                 n_cylinder_radius: this.n_cylinder_radius,
             });
@@ -1115,6 +1124,7 @@ let o_component__dxf2scad = {
                         b_mirror_side_override: o_self.b_mirror_side_override,
                         b_flip_y: o_self.b_flip_y,
                         b_endpoint_revolves: o_self.b_endpoint_revolves,
+                        b_right_angle_joints_only: o_self.b_right_angle_joints_only,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
                     })

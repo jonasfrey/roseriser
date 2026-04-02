@@ -1545,6 +1545,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
@@ -1711,7 +1713,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1807,9 +1809,14 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
 
         let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
         let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
+        let n_deg = n_ang * 180 / Math.PI;
+
+        // Right-angle-only mode: skip any joint that isn't ~90°
+        if(b_right_angle_joints_only){
+            if(Math.abs(n_deg - 90) > 15) return '';
+        }
 
         if(n_entities_at_point > 2){
-            let n_deg = n_ang * 180 / Math.PI;
             if(Math.abs(n_deg - 90) > 15) return '';
         } else {
             if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
@@ -1909,6 +1916,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])`}
 union() {
     // Sweep lines
     ${a_o_entity_line.map((o, n_idx) => {
@@ -1948,7 +1957,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -2046,10 +2055,15 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
 
             let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
             let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
+            let n_deg = n_ang * 180 / Math.PI;
+
+            // Right-angle-only mode: skip any joint that isn't ~90°
+            if(b_right_angle_joints_only){
+                if(Math.abs(n_deg - 90) > 15) return '';
+            }
 
             if(n_entities_at_point > 2){
                 // 3+ entities at this point: only generate joints for ~90° pairs
-                let n_deg = n_ang * 180 / Math.PI;
                 if(Math.abs(n_deg - 90) > 15) return '';
             } else {
                 // Exactly 2 entities: skip if point lies on another entity's path
@@ -2202,6 +2216,8 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])`}
 difference() {
     // Main shape: sweeps + endpoint caps + joints
     union() {

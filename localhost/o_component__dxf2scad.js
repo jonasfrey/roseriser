@@ -239,6 +239,7 @@ let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
     let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
     let a_o_endpoint = f_a_o_endpoint_from_a_o_entity(a_o_entity);
     a_n_idx_deselected = a_n_idx_deselected || [];
+    console.log('[roseriser] endpoint detection:', a_o_endpoint.length, 'endpoints found from', a_o_entity.length, 'entities, deselected:', a_n_idx_deselected);
 
     let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
     let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });

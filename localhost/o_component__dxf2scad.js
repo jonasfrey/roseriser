@@ -102,8 +102,16 @@ let f_init_pan_zoom = function(o_container){
     o_container.addEventListener('mousedown', function(o_ev){
         // Middle-click or left-click with no endpoint target: pan
         if(o_ev.button !== 1 && o_ev.button !== 0) return;
-        // For left-click, only pan if not clicking an endpoint marker
-        if(o_ev.button === 0 && o_ev.target.closest('[data-endpoint-idx]')) return;
+        // For left-click, check if clicking an endpoint marker — delegate to click handler
+        let o_walk = o_ev.target;
+        let b_on_endpoint = false;
+        while(o_walk && o_walk !== o_container){
+            if(o_walk.getAttribute && o_walk.getAttribute('data-endpoint-idx') !== null){
+                b_on_endpoint = true; break;
+            }
+            o_walk = o_walk.parentNode;
+        }
+        if(o_ev.button === 0 && b_on_endpoint) return;
 
         let o_svg = o_container.querySelector('svg');
         if(!o_svg) return;
@@ -1306,15 +1314,25 @@ let o_component__dxf2scad = {
         },
 
         f_toggle_endpoint: function(o_event) {
-            let o_el = o_event.target.closest('[data-endpoint-idx]');
-            if(!o_el) return;
-            let n_idx = parseInt(o_el.getAttribute('data-endpoint-idx'));
-            let n_pos = this.a_n_idx_deselected_endpoint.indexOf(n_idx);
-            if(n_pos === -1){
-                this.a_n_idx_deselected_endpoint.push(n_idx);
-            } else {
-                this.a_n_idx_deselected_endpoint.splice(n_pos, 1);
+            // Walk up from click target to find the endpoint group
+            let o_el = o_event.target;
+            while(o_el && o_el !== o_event.currentTarget){
+                if(o_el.getAttribute && o_el.getAttribute('data-endpoint-idx') !== null){
+                    break;
+                }
+                o_el = o_el.parentNode;
             }
+            if(!o_el || o_el === o_event.currentTarget) return;
+            let n_idx = parseInt(o_el.getAttribute('data-endpoint-idx'));
+            if(isNaN(n_idx)) return;
+            let a_copy = this.a_n_idx_deselected_endpoint.slice();
+            let n_pos = a_copy.indexOf(n_idx);
+            if(n_pos === -1){
+                a_copy.push(n_idx);
+            } else {
+                a_copy.splice(n_pos, 1);
+            }
+            this.a_n_idx_deselected_endpoint = a_copy;
         },
 
         f_upload_dxf: async function(o_event, s_type) {

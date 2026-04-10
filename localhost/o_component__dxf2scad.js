@@ -11,6 +11,49 @@ import {
     o_model__o_profile_template,
 } from './constructors.js';
 
+// Client-side endpoint detection: find start/end points of LINE/ARC entities
+// that are not connected to any other entity's start/end point
+let f_a_o_endpoint_from_a_o_entity = function(a_o_entity){
+    let n_tolerance = 0.0001;
+    let a_o_line_arc = a_o_entity.filter(function(o){ return o.s_type === "LINE" || o.s_type === "ARC"; });
+    // Collect all start/end points with their entity reference
+    let a_o_all_points = [];
+    for(let o of a_o_line_arc){
+        a_o_all_points.push({ o_vec3: o.o_vec3_trn_start, s_which: 'start', o_entity: o });
+        a_o_all_points.push({ o_vec3: o.o_vec3_trn_end, s_which: 'end', o_entity: o });
+    }
+    // Find connection points (points shared by 2+ entities)
+    let a_o_vec3_connected = [];
+    for(let i = 0; i < a_o_line_arc.length; i++){
+        for(let j = i + 1; j < a_o_line_arc.length; j++){
+            let a_o_pts_i = [a_o_line_arc[i].o_vec3_trn_start, a_o_line_arc[i].o_vec3_trn_end];
+            let a_o_pts_j = [a_o_line_arc[j].o_vec3_trn_start, a_o_line_arc[j].o_vec3_trn_end];
+            for(let o_pi of a_o_pts_i){
+                for(let o_pj of a_o_pts_j){
+                    if(Math.abs(o_pi.n_x - o_pj.n_x) < n_tolerance &&
+                       Math.abs(o_pi.n_y - o_pj.n_y) < n_tolerance &&
+                       Math.abs((o_pi.n_z||0) - (o_pj.n_z||0)) < n_tolerance){
+                        a_o_vec3_connected.push(o_pi);
+                    }
+                }
+            }
+        }
+    }
+    // Points not in the connected set are endpoints
+    let a_o_result = [];
+    for(let o of a_o_all_points){
+        let b_connected = a_o_vec3_connected.some(function(o_c){
+            return Math.abs(o_c.n_x - o.o_vec3.n_x) < n_tolerance &&
+                   Math.abs(o_c.n_y - o.o_vec3.n_y) < n_tolerance &&
+                   Math.abs((o_c.n_z||0) - (o.o_vec3.n_z||0)) < n_tolerance;
+        });
+        if(!b_connected){
+            a_o_result.push({ o_vec3: o.o_vec3, s_which: o.s_which, o_entity: o.o_entity });
+        }
+    }
+    return a_o_result;
+};
+
 let f_s_svg_from_a_o_entity = function(a_o_entity){
     let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
     let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
@@ -99,6 +142,102 @@ let f_s_svg_from_o_dxffile = function(o_dxffile){
     if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
     let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
     return f_s_svg_from_a_o_entity(a_o_entity);
+};
+
+// Generate path SVG with interactive endpoint markers
+// a_n_idx_deselected: array of endpoint indices that are deselected
+let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
+    if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
+    let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
+    let a_o_endpoint = f_a_o_endpoint_from_a_o_entity(a_o_entity);
+    a_n_idx_deselected = a_n_idx_deselected || [];
+
+    let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
+    let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
+    let a_o_circle = a_o_entity.filter(function(o){ return o.s_type === "CIRCLE"; });
+
+    // Compute bounding box
+    let n_x_min = Infinity, n_x_max = -Infinity;
+    let n_y_min = Infinity, n_y_max = -Infinity;
+    for(let o of a_o_line){
+        n_x_min = Math.min(n_x_min, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
+        n_x_max = Math.max(n_x_max, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
+        n_y_min = Math.min(n_y_min, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
+        n_y_max = Math.max(n_y_max, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
+    }
+    for(let o of a_o_arc){
+        n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
+        n_x_max = Math.max(n_x_max, o.o_vec3_trn.n_x + o.n_radius);
+        n_y_min = Math.min(n_y_min, o.o_vec3_trn.n_y - o.n_radius);
+        n_y_max = Math.max(n_y_max, o.o_vec3_trn.n_y + o.n_radius);
+    }
+    for(let o of a_o_circle){
+        n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
+        n_x_max = Math.max(n_x_max, o.o_vec3_trn.n_x + o.n_radius);
+        n_y_min = Math.min(n_y_min, o.o_vec3_trn.n_y - o.n_radius);
+        n_y_max = Math.max(n_y_max, o.o_vec3_trn.n_y + o.n_radius);
+    }
+
+    let n_pad = Math.max(n_x_max - n_x_min, n_y_max - n_y_min) * 0.15;
+    let n_vb_x = n_x_min - n_pad;
+    let n_vb_y = -(n_y_max + n_pad);
+    let n_vb_w = (n_x_max - n_x_min) + n_pad * 2;
+    let n_vb_h = (n_y_max - n_y_min) + n_pad * 2;
+    let n_sw = Math.max(n_vb_w, n_vb_h) * 0.015;
+    let n_r = n_sw * 1.5;
+    let n_r_endpoint = n_sw * 3;
+
+    let a_s = [];
+    a_s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + n_vb_x + ' ' + n_vb_y + ' ' + n_vb_w + ' ' + n_vb_h + '">');
+
+    // Draw entities
+    for(let o of a_o_line){
+        a_s.push('<line x1="' + o.o_vec3_trn_start.n_x + '" y1="' + (-o.o_vec3_trn_start.n_y) + '" x2="' + o.o_vec3_trn_end.n_x + '" y2="' + (-o.o_vec3_trn_end.n_y) + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
+    }
+    for(let o of a_o_arc){
+        let n_sx = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
+        let n_sy = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
+        let n_ex = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
+        let n_ey = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
+        let n_sweep = o.n_ang_deg_end - o.n_ang_deg_start;
+        if(n_sweep < 0) n_sweep += 360;
+        let n_large = n_sweep > 180 ? 1 : 0;
+        a_s.push('<path d="M ' + n_sx + ' ' + (-n_sy) + ' A ' + o.n_radius + ' ' + o.n_radius + ' 0 ' + n_large + ' 0 ' + n_ex + ' ' + (-n_ey) + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
+    }
+    for(let o of a_o_circle){
+        a_s.push('<circle cx="' + o.o_vec3_trn.n_x + '" cy="' + (-o.o_vec3_trn.n_y) + '" r="' + o.n_radius + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none"/>');
+    }
+
+    // Draw regular points
+    let a_o_point = [];
+    for(let o of a_o_line){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
+    for(let o of a_o_arc){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
+    for(let o_p of a_o_point){
+        a_s.push('<circle cx="' + o_p.n_x + '" cy="' + (-o_p.n_y) + '" r="' + n_r + '" fill="#fc8181" opacity="0.7"/>');
+    }
+
+    // Draw interactive endpoint markers
+    let n_font_size = n_sw * 2.5;
+    for(let n_idx = 0; n_idx < a_o_endpoint.length; n_idx++){
+        let o_ep = a_o_endpoint[n_idx];
+        let b_deselected = a_n_idx_deselected.indexOf(n_idx) !== -1;
+        let s_fill = b_deselected ? '#666666' : '#48bb78';
+        let s_stroke = b_deselected ? '#444444' : '#276749';
+        let s_opacity = b_deselected ? '0.4' : '0.9';
+        a_s.push('<g data-endpoint-idx="' + n_idx + '" style="cursor:pointer;">');
+        a_s.push('<circle cx="' + o_ep.o_vec3.n_x + '" cy="' + (-o_ep.o_vec3.n_y) + '" r="' + n_r_endpoint + '" fill="' + s_fill + '" stroke="' + s_stroke + '" stroke-width="' + (n_sw * 0.5) + '" opacity="' + s_opacity + '"/>');
+        a_s.push('<text x="' + o_ep.o_vec3.n_x + '" y="' + ((-o_ep.o_vec3.n_y) + n_font_size * 0.35) + '" text-anchor="middle" fill="white" font-size="' + n_font_size + '" font-family="monospace" pointer-events="none">' + n_idx + '</text>');
+        if(b_deselected){
+            // Draw X through deselected endpoints
+            let n_cross = n_r_endpoint * 0.6;
+            a_s.push('<line x1="' + (o_ep.o_vec3.n_x - n_cross) + '" y1="' + (-o_ep.o_vec3.n_y - n_cross) + '" x2="' + (o_ep.o_vec3.n_x + n_cross) + '" y2="' + (-o_ep.o_vec3.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
+            a_s.push('<line x1="' + (o_ep.o_vec3.n_x + n_cross) + '" y1="' + (-o_ep.o_vec3.n_y - n_cross) + '" x2="' + (o_ep.o_vec3.n_x - n_cross) + '" y2="' + (-o_ep.o_vec3.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
+        }
+        a_s.push('</g>');
+    }
+
+    a_s.push('</svg>');
+    return a_s.join('\n');
 };
 
 let f_s_svg_entities_layer = function(a_o_entity, s_stroke, s_point_fill, n_sw, n_r){
@@ -844,6 +983,7 @@ let o_component__dxf2scad = {
                                 'v-if': 'o_svg__path',
                                 class: 'o_dxf2scad__preview o_dxf2scad__preview--standalone',
                                 'v-html': 'o_svg__path',
+                                'v-on:click': 'f_toggle_endpoint($event)',
                             },
                         ],
                     },
@@ -962,6 +1102,7 @@ let o_component__dxf2scad = {
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
+            a_n_idx_deselected_endpoint: [],
             s_scad_output: '',
             s_path_scad: '',
             s_status: '',
@@ -1016,7 +1157,7 @@ let o_component__dxf2scad = {
         },
         o_svg__path: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));
-            return o_dxf ? f_s_svg_from_o_dxffile(o_dxf) : '';
+            return o_dxf ? f_s_svg_path_with_endpoints(o_dxf, this.a_n_idx_deselected_endpoint) : '';
         },
         b_can_generate: function() {
             if (!this.n_id__profile) return false;
@@ -1040,6 +1181,7 @@ let o_component__dxf2scad = {
                 b_right_angle_joints_only: this.b_right_angle_joints_only,
                 b_round_mode: this.b_round_mode,
                 n_cylinder_radius: this.n_cylinder_radius,
+                a_n_idx_deselected_endpoint: this.a_n_idx_deselected_endpoint,
             });
         },
     },
@@ -1051,6 +1193,9 @@ let o_component__dxf2scad = {
             this.n_id__profile = o_tpl.n_id_dxffile_profile;
             this.n_id__profile_remover = o_tpl.n_id_dxffile_profile_remover;
             this.b_remover = true;
+        },
+        n_id__path: function() {
+            this.a_n_idx_deselected_endpoint = [];
         },
         s_generation_inputs: function(s_val) {
             let o_self = this;
@@ -1067,6 +1212,18 @@ let o_component__dxf2scad = {
         },
     },
     methods: {
+        f_toggle_endpoint: function(o_event) {
+            let o_el = o_event.target.closest('[data-endpoint-idx]');
+            if(!o_el) return;
+            let n_idx = parseInt(o_el.getAttribute('data-endpoint-idx'));
+            let n_pos = this.a_n_idx_deselected_endpoint.indexOf(n_idx);
+            if(n_pos === -1){
+                this.a_n_idx_deselected_endpoint.push(n_idx);
+            } else {
+                this.a_n_idx_deselected_endpoint.splice(n_pos, 1);
+            }
+        },
+
         f_upload_dxf: async function(o_event, s_type) {
             let o_self = this;
             let o_file = o_event.target.files[0];
@@ -1127,6 +1284,7 @@ let o_component__dxf2scad = {
                         b_right_angle_joints_only: o_self.b_right_angle_joints_only,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
+                        a_n_idx_deselected_endpoint: o_self.a_n_idx_deselected_endpoint,
                     })
                 );
 

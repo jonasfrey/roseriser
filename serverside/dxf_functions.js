@@ -1452,7 +1452,7 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, a_n_idx_deselected_endpoint = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1464,7 +1464,9 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
+    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
+        (o, idx) => a_n_idx_deselected_endpoint.indexOf(idx) === -1
+    );
 
     let n_segments = 50;
 
@@ -1713,7 +1715,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_n_idx_deselected_endpoint = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1725,7 +1727,9 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
+    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
+        (o, idx) => a_n_idx_deselected_endpoint.indexOf(idx) === -1
+    );
     let a_o_connection = o_sketch__path.a_o_entity_connection;
 
     // Extension length for joints — must be long enough to fully overlap at any angle
@@ -1957,7 +1961,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_n_idx_deselected_endpoint = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1972,7 +1976,9 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection;
+    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
+        (o, idx) => a_n_idx_deselected_endpoint.indexOf(idx) === -1
+    );
     let a_o_connection = o_sketch__path.a_o_entity_connection;
 
     let a_x = o_sketch__profile.a_o_vec3_trn.map(p => p.n_x);

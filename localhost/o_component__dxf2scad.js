@@ -54,6 +54,86 @@ let f_a_o_endpoint_from_a_o_entity = function(a_o_entity){
     return a_o_result;
 };
 
+// Pan/zoom: attach mouse handlers to a container holding an SVG
+let f_init_pan_zoom = function(o_container){
+    if(o_container._b_pan_zoom_initialized) return;
+    o_container._b_pan_zoom_initialized = true;
+
+    let f_save_original_vb = function(o_svg){
+        if(!o_svg._s_viewBox_original){
+            o_svg._s_viewBox_original = o_svg.getAttribute('viewBox');
+        }
+    };
+
+    // Double-click to reset view
+    o_container.addEventListener('dblclick', function(o_ev){
+        let o_svg = o_container.querySelector('svg');
+        if(!o_svg) return;
+        if(o_svg._s_viewBox_original){
+            o_svg.setAttribute('viewBox', o_svg._s_viewBox_original);
+        }
+    });
+
+    o_container.addEventListener('wheel', function(o_ev){
+        let o_svg = o_container.querySelector('svg');
+        if(!o_svg) return;
+        o_ev.preventDefault();
+        f_save_original_vb(o_svg);
+        let s_vb = o_svg.getAttribute('viewBox');
+        if(!s_vb) return;
+        let a = s_vb.split(/\s+/).map(Number);
+        let n_vb_x = a[0], n_vb_y = a[1], n_vb_w = a[2], n_vb_h = a[3];
+
+        let n_factor = o_ev.deltaY > 0 ? 1.15 : 1 / 1.15;
+
+        // Zoom toward mouse position
+        let o_rect = o_svg.getBoundingClientRect();
+        let n_mx = (o_ev.clientX - o_rect.left) / o_rect.width;
+        let n_my = (o_ev.clientY - o_rect.top) / o_rect.height;
+
+        let n_new_w = n_vb_w * n_factor;
+        let n_new_h = n_vb_h * n_factor;
+        let n_new_x = n_vb_x - (n_new_w - n_vb_w) * n_mx;
+        let n_new_y = n_vb_y - (n_new_h - n_vb_h) * n_my;
+
+        o_svg.setAttribute('viewBox', n_new_x + ' ' + n_new_y + ' ' + n_new_w + ' ' + n_new_h);
+    }, { passive: false });
+
+    o_container.addEventListener('mousedown', function(o_ev){
+        // Middle-click or left-click with no endpoint target: pan
+        if(o_ev.button !== 1 && o_ev.button !== 0) return;
+        // For left-click, only pan if not clicking an endpoint marker
+        if(o_ev.button === 0 && o_ev.target.closest('[data-endpoint-idx]')) return;
+
+        let o_svg = o_container.querySelector('svg');
+        if(!o_svg) return;
+        let s_vb = o_svg.getAttribute('viewBox');
+        if(!s_vb) return;
+        o_ev.preventDefault();
+        f_save_original_vb(o_svg);
+
+        let a = s_vb.split(/\s+/).map(Number);
+        let n_vb_x = a[0], n_vb_y = a[1], n_vb_w = a[2], n_vb_h = a[3];
+        let o_rect = o_svg.getBoundingClientRect();
+        let n_start_x = o_ev.clientX;
+        let n_start_y = o_ev.clientY;
+
+        let f_move = function(o_ev_move){
+            let n_dx = (o_ev_move.clientX - n_start_x) / o_rect.width * n_vb_w;
+            let n_dy = (o_ev_move.clientY - n_start_y) / o_rect.height * n_vb_h;
+            o_svg.setAttribute('viewBox',
+                (n_vb_x - n_dx) + ' ' + (n_vb_y - n_dy) + ' ' + n_vb_w + ' ' + n_vb_h
+            );
+        };
+        let f_up = function(){
+            document.removeEventListener('mousemove', f_move);
+            document.removeEventListener('mouseup', f_up);
+        };
+        document.addEventListener('mousemove', f_move);
+        document.addEventListener('mouseup', f_up);
+    });
+};
+
 let f_s_svg_from_a_o_entity = function(a_o_entity){
     let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
     let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
@@ -1185,6 +1265,12 @@ let o_component__dxf2scad = {
             });
         },
     },
+    mounted: function() {
+        this.$nextTick(this.f_init_all_pan_zoom);
+    },
+    updated: function() {
+        this.$nextTick(this.f_init_all_pan_zoom);
+    },
     watch: {
         n_id__profile_template: function(n_id) {
             if (n_id === null) return;
@@ -1212,6 +1298,13 @@ let o_component__dxf2scad = {
         },
     },
     methods: {
+        f_init_all_pan_zoom: function() {
+            let a_o_el = this.$el.querySelectorAll('.o_dxf2scad__preview');
+            for(let o_el of a_o_el){
+                f_init_pan_zoom(o_el);
+            }
+        },
+
         f_toggle_endpoint: function(o_event) {
             let o_el = o_event.target.closest('[data-endpoint-idx]');
             if(!o_el) return;

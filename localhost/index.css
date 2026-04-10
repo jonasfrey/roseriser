@@ -430,9 +430,15 @@ main {
     flex: 1;
     background: var(--c-surface);
     padding: 0.5rem;
-    max-height: 200px;
+    max-height: 300px;
     display: flex;
     justify-content: center;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.o_dxf2scad__preview:active {
+    cursor: grabbing;
 }
 
 .o_dxf2scad__preview--standalone {
@@ -442,7 +448,7 @@ main {
 }
 
 .o_dxf2scad__preview svg {
-    max-height: 160px;
+    max-height: 260px;
     width: auto;
 }
 

@@ -148,7 +148,7 @@ o_wsmsg__upload_dxf.f_v_server_implementation = async function(o_wsmsg){
 
 // SCAD generation handler: takes dxffile IDs and generation type, generates OpenSCAD script
 o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
-    let { s_generation_type, n_id__profile, n_id__profile_remover, n_id__path, n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_endpoint_revolves, b_right_angle_joints_only, b_round_mode, n_cylinder_radius, a_n_idx_deselected_endpoint } = o_wsmsg.v_data;
+    let { s_generation_type, n_id__profile, n_id__profile_remover, n_id__path, n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_endpoint_revolves, b_right_angle_joints_only, b_round_mode, n_cylinder_radius, a_o_deselected_point } = o_wsmsg.v_data;
     n_point_per_mm = n_point_per_mm || 1;
     s_sweep_function = s_sweep_function || 'path_sweep2d';
     b_mirror_side_override = b_mirror_side_override || false;
@@ -157,7 +157,7 @@ o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
     b_right_angle_joints_only = b_right_angle_joints_only || false;
     b_round_mode = b_round_mode || false;
     n_cylinder_radius = n_cylinder_radius || 0;
-    a_n_idx_deselected_endpoint = a_n_idx_deselected_endpoint || [];
+    a_o_deselected_point = a_o_deselected_point || [];
     let s_name_table = f_s_name_table__from_o_model(o_model__o_dxffile);
 
     let f_get = function(n_id){
@@ -181,11 +181,11 @@ o_wsmsg__generate_scad.f_v_server_implementation = async function(o_wsmsg){
     } else if(s_generation_type === 'simple'){
         s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, false, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius);
     } else if(s_generation_type === 'simple_endpoints'){
-        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, true, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, a_n_idx_deselected_endpoint);
+        s_scad = f_s_scad__generate_simple(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, true, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, a_o_deselected_point);
     } else if(s_generation_type === 'simple_endpoints_joints'){
-        s_scad = f_s_scad__generate_simple_joints(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, b_endpoint_revolves, b_right_angle_joints_only, a_n_idx_deselected_endpoint);
+        s_scad = f_s_scad__generate_simple_joints(o_dxffile__profile, f_get(n_id__path), n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, b_endpoint_revolves, b_right_angle_joints_only, a_o_deselected_point);
     } else if(s_generation_type === 'simple_endpoints_joints_remover'){
-        s_scad = f_s_scad__generate_simple_joints_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, b_endpoint_revolves, b_right_angle_joints_only, a_n_idx_deselected_endpoint);
+        s_scad = f_s_scad__generate_simple_joints_remover(o_dxffile__profile, f_get(n_id__profile_remover), f_get(n_id__path), n_point_per_mm, s_sweep_function, b_mirror_side_override, b_flip_y, b_round_mode, n_cylinder_radius, b_endpoint_revolves, b_right_angle_joints_only, a_o_deselected_point);
     }
 
     // save generated SCAD file to disk

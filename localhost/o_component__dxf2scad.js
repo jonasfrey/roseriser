@@ -11,47 +11,29 @@ import {
     o_model__o_profile_template,
 } from './constructors.js';
 
-// Client-side endpoint detection: find start/end points of LINE/ARC entities
-// that are not connected to any other entity's start/end point
-let f_a_o_endpoint_from_a_o_entity = function(a_o_entity){
-    let n_tolerance = 0.0001;
+// Client-side detection: find all unique start/end points of LINE/ARC entities.
+// These are all candidate revolve points (both connection points and unconnected endpoints).
+let f_a_o_revolve_point_from_a_o_entity = function(a_o_entity){
+    let n_tolerance = 0.01;
     let a_o_line_arc = a_o_entity.filter(function(o){ return o.s_type === "LINE" || o.s_type === "ARC"; });
-    // Collect all start/end points with their entity reference
+    // Collect all start/end points
     let a_o_all_points = [];
     for(let o of a_o_line_arc){
-        a_o_all_points.push({ o_vec3: o.o_vec3_trn_start, s_which: 'start', o_entity: o });
-        a_o_all_points.push({ o_vec3: o.o_vec3_trn_end, s_which: 'end', o_entity: o });
+        a_o_all_points.push(o.o_vec3_trn_start);
+        a_o_all_points.push(o.o_vec3_trn_end);
     }
-    // Find connection points (points shared by 2+ entities)
-    let a_o_vec3_connected = [];
-    for(let i = 0; i < a_o_line_arc.length; i++){
-        for(let j = i + 1; j < a_o_line_arc.length; j++){
-            let a_o_pts_i = [a_o_line_arc[i].o_vec3_trn_start, a_o_line_arc[i].o_vec3_trn_end];
-            let a_o_pts_j = [a_o_line_arc[j].o_vec3_trn_start, a_o_line_arc[j].o_vec3_trn_end];
-            for(let o_pi of a_o_pts_i){
-                for(let o_pj of a_o_pts_j){
-                    if(Math.abs(o_pi.n_x - o_pj.n_x) < n_tolerance &&
-                       Math.abs(o_pi.n_y - o_pj.n_y) < n_tolerance &&
-                       Math.abs((o_pi.n_z||0) - (o_pj.n_z||0)) < n_tolerance){
-                        a_o_vec3_connected.push(o_pi);
-                    }
-                }
-            }
-        }
-    }
-    // Points not in the connected set are endpoints
-    let a_o_result = [];
-    for(let o of a_o_all_points){
-        let b_connected = a_o_vec3_connected.some(function(o_c){
-            return Math.abs(o_c.n_x - o.o_vec3.n_x) < n_tolerance &&
-                   Math.abs(o_c.n_y - o.o_vec3.n_y) < n_tolerance &&
-                   Math.abs((o_c.n_z||0) - (o.o_vec3.n_z||0)) < n_tolerance;
+    // Deduplicate by position
+    let a_o_unique = [];
+    for(let o_p of a_o_all_points){
+        let b_exists = a_o_unique.some(function(o_u){
+            return Math.abs(o_u.n_x - o_p.n_x) < n_tolerance &&
+                   Math.abs(o_u.n_y - o_p.n_y) < n_tolerance;
         });
-        if(!b_connected){
-            a_o_result.push({ o_vec3: o.o_vec3, s_which: o.s_which, o_entity: o.o_entity });
+        if(!b_exists){
+            a_o_unique.push(o_p);
         }
     }
-    return a_o_result;
+    return a_o_unique;
 };
 
 // Pan/zoom: attach mouse handlers to a container holding an SVG
@@ -237,9 +219,8 @@ let f_s_svg_from_o_dxffile = function(o_dxffile){
 let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
     if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
     let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
-    let a_o_endpoint = f_a_o_endpoint_from_a_o_entity(a_o_entity);
+    let a_o_revolve_point = f_a_o_revolve_point_from_a_o_entity(a_o_entity);
     a_n_idx_deselected = a_n_idx_deselected || [];
-    console.log('[roseriser] endpoint detection:', a_o_endpoint.length, 'endpoints found from', a_o_entity.length, 'entities, deselected:', a_n_idx_deselected);
 
     let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
     let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
@@ -255,10 +236,14 @@ let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
         n_y_max = Math.max(n_y_max, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
     }
     for(let o of a_o_arc){
-        n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
-        n_x_max = Math.max(n_x_max, o.o_vec3_trn.n_x + o.n_radius);
-        n_y_min = Math.min(n_y_min, o.o_vec3_trn.n_y - o.n_radius);
-        n_y_max = Math.max(n_y_max, o.o_vec3_trn.n_y + o.n_radius);
+        let n_sx2 = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
+        let n_sy2 = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
+        let n_ex2 = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
+        let n_ey2 = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
+        n_x_min = Math.min(n_x_min, n_sx2, n_ex2, o.o_vec3_trn.n_x - o.n_radius);
+        n_x_max = Math.max(n_x_max, n_sx2, n_ex2, o.o_vec3_trn.n_x + o.n_radius);
+        n_y_min = Math.min(n_y_min, n_sy2, n_ey2, o.o_vec3_trn.n_y - o.n_radius);
+        n_y_max = Math.max(n_y_max, n_sy2, n_ey2, o.o_vec3_trn.n_y + o.n_radius);
     }
     for(let o of a_o_circle){
         n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
@@ -297,30 +282,21 @@ let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
         a_s.push('<circle cx="' + o.o_vec3_trn.n_x + '" cy="' + (-o.o_vec3_trn.n_y) + '" r="' + o.n_radius + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none"/>');
     }
 
-    // Draw regular points
-    let a_o_point = [];
-    for(let o of a_o_line){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
-    for(let o of a_o_arc){ a_o_point.push(o.o_vec3_trn_start, o.o_vec3_trn_end); }
-    for(let o_p of a_o_point){
-        a_s.push('<circle cx="' + o_p.n_x + '" cy="' + (-o_p.n_y) + '" r="' + n_r + '" fill="#fc8181" opacity="0.7"/>');
-    }
-
-    // Draw interactive endpoint markers
+    // Draw interactive revolve point markers on top of entity points
     let n_font_size = n_sw * 2.5;
-    for(let n_idx = 0; n_idx < a_o_endpoint.length; n_idx++){
-        let o_ep = a_o_endpoint[n_idx];
+    for(let n_idx = 0; n_idx < a_o_revolve_point.length; n_idx++){
+        let o_pt = a_o_revolve_point[n_idx];
         let b_deselected = a_n_idx_deselected.indexOf(n_idx) !== -1;
         let s_fill = b_deselected ? '#666666' : '#48bb78';
-        let s_stroke = b_deselected ? '#444444' : '#276749';
-        let s_opacity = b_deselected ? '0.4' : '0.9';
+        let s_stroke_color = b_deselected ? '#444444' : '#276749';
+        let s_opacity = b_deselected ? '0.5' : '0.9';
         a_s.push('<g data-endpoint-idx="' + n_idx + '" style="cursor:pointer;">');
-        a_s.push('<circle cx="' + o_ep.o_vec3.n_x + '" cy="' + (-o_ep.o_vec3.n_y) + '" r="' + n_r_endpoint + '" fill="' + s_fill + '" stroke="' + s_stroke + '" stroke-width="' + (n_sw * 0.5) + '" opacity="' + s_opacity + '"/>');
-        a_s.push('<text x="' + o_ep.o_vec3.n_x + '" y="' + ((-o_ep.o_vec3.n_y) + n_font_size * 0.35) + '" text-anchor="middle" fill="white" font-size="' + n_font_size + '" font-family="monospace" pointer-events="none">' + n_idx + '</text>');
+        a_s.push('<circle cx="' + o_pt.n_x + '" cy="' + (-o_pt.n_y) + '" r="' + n_r_endpoint + '" fill="' + s_fill + '" stroke="' + s_stroke_color + '" stroke-width="' + (n_sw * 0.5) + '" opacity="' + s_opacity + '"/>');
+        a_s.push('<text x="' + o_pt.n_x + '" y="' + ((-o_pt.n_y) + n_font_size * 0.35) + '" text-anchor="middle" fill="white" font-size="' + n_font_size + '" font-family="monospace" pointer-events="none">' + n_idx + '</text>');
         if(b_deselected){
-            // Draw X through deselected endpoints
             let n_cross = n_r_endpoint * 0.6;
-            a_s.push('<line x1="' + (o_ep.o_vec3.n_x - n_cross) + '" y1="' + (-o_ep.o_vec3.n_y - n_cross) + '" x2="' + (o_ep.o_vec3.n_x + n_cross) + '" y2="' + (-o_ep.o_vec3.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
-            a_s.push('<line x1="' + (o_ep.o_vec3.n_x + n_cross) + '" y1="' + (-o_ep.o_vec3.n_y - n_cross) + '" x2="' + (o_ep.o_vec3.n_x - n_cross) + '" y2="' + (-o_ep.o_vec3.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
+            a_s.push('<line x1="' + (o_pt.n_x - n_cross) + '" y1="' + (-o_pt.n_y - n_cross) + '" x2="' + (o_pt.n_x + n_cross) + '" y2="' + (-o_pt.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
+            a_s.push('<line x1="' + (o_pt.n_x + n_cross) + '" y1="' + (-o_pt.n_y - n_cross) + '" x2="' + (o_pt.n_x - n_cross) + '" y2="' + (-o_pt.n_y + n_cross) + '" stroke="#ff4444" stroke-width="' + (n_sw * 0.5) + '" pointer-events="none"/>');
         }
         a_s.push('</g>');
     }
@@ -1270,8 +1246,24 @@ let o_component__dxf2scad = {
                 b_right_angle_joints_only: this.b_right_angle_joints_only,
                 b_round_mode: this.b_round_mode,
                 n_cylinder_radius: this.n_cylinder_radius,
-                a_n_idx_deselected_endpoint: this.a_n_idx_deselected_endpoint,
+                a_o_deselected_point: this.a_o_deselected_point,
             });
+        },
+        // Compute deselected point coordinates from indices
+        a_o_deselected_point: function(){
+            if(!this.n_id__path || this.a_n_idx_deselected_endpoint.length === 0) return [];
+            let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));
+            if(!o_dxf || !o_dxf.s_json_a_o_entity) return [];
+            let a_o_entity = JSON.parse(o_dxf.s_json_a_o_entity);
+            let a_o_revolve_point = f_a_o_revolve_point_from_a_o_entity(a_o_entity);
+            let a_o_result = [];
+            for(let n_idx of this.a_n_idx_deselected_endpoint){
+                if(n_idx < a_o_revolve_point.length){
+                    let o_pt = a_o_revolve_point[n_idx];
+                    a_o_result.push({ n_x: o_pt.n_x, n_y: o_pt.n_y, n_z: o_pt.n_z || 0 });
+                }
+            }
+            return a_o_result;
         },
     },
     mounted: function() {
@@ -1396,7 +1388,7 @@ let o_component__dxf2scad = {
                         b_right_angle_joints_only: o_self.b_right_angle_joints_only,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
-                        a_n_idx_deselected_endpoint: o_self.a_n_idx_deselected_endpoint,
+                        a_o_deselected_point: o_self.a_o_deselected_point,
                     })
                 );
 

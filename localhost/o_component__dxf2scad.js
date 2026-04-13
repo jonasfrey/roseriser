@@ -259,7 +259,7 @@ let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
     let n_vb_h = (n_y_max - n_y_min) + n_pad * 2;
     let n_sw = Math.max(n_vb_w, n_vb_h) * 0.015;
     let n_r = n_sw * 1.5;
-    let n_r_endpoint = n_sw * 3;
+    let n_r_endpoint = n_sw * 1.2;
 
     let a_s = [];
     a_s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + n_vb_x + ' ' + n_vb_y + ' ' + n_vb_w + ' ' + n_vb_h + '">');
@@ -283,7 +283,7 @@ let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_deselected){
     }
 
     // Draw interactive revolve point markers on top of entity points
-    let n_font_size = n_sw * 2.5;
+    let n_font_size = n_sw * 1.2;
     for(let n_idx = 0; n_idx < a_o_revolve_point.length; n_idx++){
         let o_pt = a_o_revolve_point[n_idx];
         let b_deselected = a_n_idx_deselected.indexOf(n_idx) !== -1;

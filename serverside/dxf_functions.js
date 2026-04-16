@@ -663,23 +663,28 @@ let f_a_o_pointwithrotation_noconnection = function(a_o_entity, a_o_entity_conne
     let a_o_result = [];
     let a_o_vec3_connected = a_o_entity_connection.map(o_conn => o_conn.o_trn_vec3_connected);
 
+    // A point is "truly unconnected" if no other entity's endpoint matches AND
+    // the point doesn't lie on any other entity's path interior (T-junction).
+    let f_b_truly_loose = function(o_vec3, o_entity_self){
+        if(a_o_vec3_connected.some(o_v => f_b_vec3_equal(o_v, o_vec3))) return false;
+        return !a_o_entity.some(o_other =>
+            o_other !== o_entity_self &&
+            (o_other.s_type === "LINE" || o_other.s_type === "ARC") &&
+            f_b_point_on_entity(o_vec3, o_other)
+        );
+    };
+
     for(let o_entity of a_o_entity){
         if(o_entity.s_type !== "LINE" && o_entity.s_type !== "ARC") continue;
 
-        let b_start_connected = a_o_vec3_connected.some(
-            o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_start)
-        );
-        if(!b_start_connected){
+        if(f_b_truly_loose(o_entity.o_vec3_trn_start, o_entity)){
             let n_rotation_deg = (o_entity.s_type === "LINE")
                 ? o_entity.n_rotation_deg_start + 180
                 : o_entity.n_ang_deg_start - 90;
             a_o_result.push({ o_vec3: o_entity.o_vec3_trn_start, n_rotation_deg });
         }
 
-        let b_end_connected = a_o_vec3_connected.some(
-            o_vec3 => f_b_vec3_equal(o_vec3, o_entity.o_vec3_trn_end)
-        );
-        if(!b_end_connected){
+        if(f_b_truly_loose(o_entity.o_vec3_trn_end, o_entity)){
             let n_rotation_deg = (o_entity.s_type === "LINE")
                 ? o_entity.n_rotation_deg_start
                 : o_entity.n_ang_deg_end + 90;

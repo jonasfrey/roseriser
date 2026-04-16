@@ -1841,7 +1841,10 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
 
         let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
         let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
-        if(n_entities_at_point <= 2 && f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
+        // Only clean 2-entity corners — skip busy vertices where 3+ entities meet
+        if(n_entities_at_point > 2) return '';
+        // Skip T-junctions where the corner point lies on a third entity
+        if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
 
         let s_ext_a = f_s_extension_sweep(o_conn, o_conn.o_entity_a, o_conn.o_vec3_dir_entity_a, n_idx, 'a');
         let s_ext_b = f_s_extension_sweep(o_conn, o_conn.o_entity_b, o_conn.o_vec3_dir_entity_b, n_idx, 'b');
@@ -2102,7 +2105,10 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
 
             let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
             let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
-            if(n_entities_at_point <= 2 && f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
+            // Only clean 2-entity corners — skip busy vertices where 3+ entities meet
+            if(n_entities_at_point > 2) return '';
+            // Skip T-junctions where the corner point lies on a third entity
+            if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
 
             let s_ext_a = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_a);
             let s_ext_b = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_b);

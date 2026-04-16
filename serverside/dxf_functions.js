@@ -1786,10 +1786,20 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         );
     };
 
+    // Helper: two arcs are on the same underlying circle (same center + radius)
+    let f_b_same_circle = function(o_ent_a, o_ent_b){
+        if(o_ent_a.s_type !== "ARC" || o_ent_b.s_type !== "ARC") return false;
+        if(!o_ent_a.o_vec3_trn || !o_ent_b.o_vec3_trn) return false;
+        let n_tol = 0.01;
+        return Math.abs(o_ent_a.o_vec3_trn.n_x - o_ent_b.o_vec3_trn.n_x) < n_tol &&
+               Math.abs(o_ent_a.o_vec3_trn.n_y - o_ent_b.o_vec3_trn.n_y) < n_tol &&
+               Math.abs((o_ent_a.n_radius || 0) - (o_ent_b.n_radius || 0)) < n_tol;
+    };
+
     // Generate joint blocks — type-aware rules:
-    //   ARC-ARC non-flowing tangent (≈0°)  → revolve cap
-    //   LINE-LINE ~90°                     → intersection joint
-    //   everything else                    → skip
+    //   ARC-ARC non-flowing tangent (≈0°) on DIFFERENT circles → revolve cap (genuine cusp)
+    //   LINE-LINE ~90°                                         → intersection joint
+    //   everything else                                        → skip
     let s_joints = a_o_connection.map((o_conn, n_idx) => {
         if(o_conn.b_tangent) return ''; // skip smooth flowing connections
 
@@ -1800,10 +1810,11 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
         let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-        // Non-flowing tangent (angle ≈ 0°): revolve cap, but only when both entities are arcs
+        // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps on DIFFERENT circles
         if(n_ang < (15 * Math.PI / 180)){
             if(!b_endpoint_revolves) return '';
             if(!b_both_arcs) return '';
+            if(f_b_same_circle(o_conn.o_entity_a, o_conn.o_entity_b)) return '';
             let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
             let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
             return `    // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
@@ -2032,10 +2043,20 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         );
     };
 
+    // Helper: two arcs are on the same underlying circle (same center + radius)
+    let f_b_same_circle = function(o_ent_a, o_ent_b){
+        if(o_ent_a.s_type !== "ARC" || o_ent_b.s_type !== "ARC") return false;
+        if(!o_ent_a.o_vec3_trn || !o_ent_b.o_vec3_trn) return false;
+        let n_tol = 0.01;
+        return Math.abs(o_ent_a.o_vec3_trn.n_x - o_ent_b.o_vec3_trn.n_x) < n_tol &&
+               Math.abs(o_ent_a.o_vec3_trn.n_y - o_ent_b.o_vec3_trn.n_y) < n_tol &&
+               Math.abs((o_ent_a.n_radius || 0) - (o_ent_b.n_radius || 0)) < n_tol;
+    };
+
     // Generate joint blocks — type-aware rules:
-    //   ARC-ARC non-flowing tangent (≈0°)  → revolve cap
-    //   LINE-LINE ~90°                     → intersection joint (or extensions for remover)
-    //   everything else                    → skip
+    //   ARC-ARC non-flowing tangent (≈0°) on DIFFERENT circles → revolve cap (genuine cusp)
+    //   LINE-LINE ~90°                                         → intersection joint (or extensions for remover)
+    //   everything else                                        → skip
     let f_s_joints = function(s_profile_var, s_cap_module, b_extend_only = false){
         return a_o_connection.map((o_conn, n_idx) => {
             if(o_conn.b_tangent) return '';
@@ -2047,10 +2068,11 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
             let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
             let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-            // Non-flowing tangent (angle ≈ 0°): revolve cap, but only when both entities are arcs
+            // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps on DIFFERENT circles
             if(n_ang < (15 * Math.PI / 180)){
                 if(!b_endpoint_revolves || b_round_mode) return '';
                 if(!b_both_arcs) return '';
+                if(f_b_same_circle(o_conn.o_entity_a, o_conn.o_entity_b)) return '';
                 let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
                 let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
                 return `        // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]

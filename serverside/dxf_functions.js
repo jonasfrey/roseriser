@@ -1815,11 +1815,14 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
         let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-        // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps on DIFFERENT circles
+        // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps
+        // on DIFFERENT circles, and only when the cusp point itself is NOT on
+        // any other entity (skip T-junctions where the cusp lies on a line/arc).
         if(n_ang < (15 * Math.PI / 180)){
             if(!b_endpoint_revolves) return '';
             if(!b_both_arcs) return '';
             if(f_b_same_circle(o_conn.o_entity_a, o_conn.o_entity_b)) return '';
+            if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
             let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
             let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
             return `    // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
@@ -2073,11 +2076,14 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
             let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
             let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-            // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps on DIFFERENT circles
+            // Non-flowing tangent (angle ≈ 0°): revolve cap only for arc-arc cusps
+            // on DIFFERENT circles, and only when the cusp point itself is NOT on
+            // any other entity (skip T-junctions where the cusp lies on a line/arc).
             if(n_ang < (15 * Math.PI / 180)){
                 if(!b_endpoint_revolves || b_round_mode) return '';
                 if(!b_both_arcs) return '';
                 if(f_b_same_circle(o_conn.o_entity_a, o_conn.o_entity_b)) return '';
+                if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
                 let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
                 let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
                 return `        // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]

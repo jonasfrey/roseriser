@@ -1452,7 +1452,7 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, a_o_deselected_point = []){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, a_o_selected_point = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1465,7 +1465,7 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
     let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => !a_o_deselected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
+        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
     );
 
     let n_segments = 50;
@@ -1715,7 +1715,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_deselected_point = []){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_selected_point = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1728,13 +1728,13 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
     let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => !a_o_deselected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
+        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
     );
     let a_o_connection = o_sketch__path.a_o_entity_connection;
 
-    // Helper: check if a connection point is deselected
-    let f_b_point_deselected = function(o_vec3){
-        return a_o_deselected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
+    // Helper: check if a connection point is selected (should get a joint/revolve)
+    let f_b_point_selected = function(o_vec3){
+        return a_o_selected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
     };
 
     // Extension length for joints — must be long enough to fully overlap at any angle
@@ -1801,8 +1801,8 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
 
         let cp = o_conn.o_trn_vec3_connected;
 
-        // Skip if this connection point has been deselected by the user
-        if(f_b_point_deselected(cp)) return '';
+        // Only generate joint if this connection point has been selected by the user
+        if(!f_b_point_selected(cp)) return '';
 
         let n_ang = o_conn.n_ang_rad_between_entities;
 
@@ -1970,7 +1970,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_deselected_point = []){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_selected_point = []){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1986,7 +1986,7 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
     let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => !a_o_deselected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
+        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
     );
     let a_o_connection = o_sketch__path.a_o_entity_connection;
 
@@ -2045,9 +2045,9 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         );
     };
 
-    // Helper: check if a connection point is deselected
-    let f_b_point_deselected = function(o_vec3){
-        return a_o_deselected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
+    // Helper: check if a connection point is selected (should get a joint/revolve)
+    let f_b_point_selected = function(o_vec3){
+        return a_o_selected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
     };
 
     // Generate joint blocks for a given profile variable and its endpoint cap module name
@@ -2058,8 +2058,8 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
 
             let cp = o_conn.o_trn_vec3_connected;
 
-            // Skip if this connection point has been deselected by the user
-            if(f_b_point_deselected(cp)) return '';
+            // Only generate joint if this connection point has been selected by the user
+            if(!f_b_point_selected(cp)) return '';
 
             let n_ang = o_conn.n_ang_rad_between_entities;
 

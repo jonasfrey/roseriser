@@ -11,31 +11,6 @@ import {
     o_model__o_profile_template,
 } from './constructors.js';
 
-// Client-side detection: find all unique start/end points of LINE/ARC entities.
-// These are all candidate revolve points (both connection points and unconnected endpoints).
-let f_a_o_revolve_point_from_a_o_entity = function(a_o_entity){
-    let n_tolerance = 0.01;
-    let a_o_line_arc = a_o_entity.filter(function(o){ return o.s_type === "LINE" || o.s_type === "ARC"; });
-    // Collect all start/end points
-    let a_o_all_points = [];
-    for(let o of a_o_line_arc){
-        a_o_all_points.push(o.o_vec3_trn_start);
-        a_o_all_points.push(o.o_vec3_trn_end);
-    }
-    // Deduplicate by position
-    let a_o_unique = [];
-    for(let o_p of a_o_all_points){
-        let b_exists = a_o_unique.some(function(o_u){
-            return Math.abs(o_u.n_x - o_p.n_x) < n_tolerance &&
-                   Math.abs(o_u.n_y - o_p.n_y) < n_tolerance;
-        });
-        if(!b_exists){
-            a_o_unique.push(o_p);
-        }
-    }
-    return a_o_unique;
-};
-
 // Pan/zoom: attach mouse handlers to a container holding an SVG
 let f_init_pan_zoom = function(o_container){
     if(o_container._b_pan_zoom_initialized) return;
@@ -84,16 +59,6 @@ let f_init_pan_zoom = function(o_container){
     o_container.addEventListener('mousedown', function(o_ev){
         // Middle-click or left-click with no endpoint target: pan
         if(o_ev.button !== 1 && o_ev.button !== 0) return;
-        // For left-click, check if clicking an endpoint marker — delegate to click handler
-        let o_walk = o_ev.target;
-        let b_on_endpoint = false;
-        while(o_walk && o_walk !== o_container){
-            if(o_walk.getAttribute && o_walk.getAttribute('data-endpoint-idx') !== null){
-                b_on_endpoint = true; break;
-            }
-            o_walk = o_walk.parentNode;
-        }
-        if(o_ev.button === 0 && b_on_endpoint) return;
 
         let o_svg = o_container.querySelector('svg');
         if(!o_svg) return;
@@ -212,92 +177,6 @@ let f_s_svg_from_o_dxffile = function(o_dxffile){
     if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
     let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
     return f_s_svg_from_a_o_entity(a_o_entity);
-};
-
-// Generate path SVG with interactive endpoint markers
-// a_n_idx_selected: array of endpoint indices that are selected (will get revolves/joints)
-let f_s_svg_path_with_endpoints = function(o_dxffile, a_n_idx_selected){
-    if(!o_dxffile || !o_dxffile.s_json_a_o_entity) return '';
-    let a_o_entity = JSON.parse(o_dxffile.s_json_a_o_entity);
-    let a_o_revolve_point = f_a_o_revolve_point_from_a_o_entity(a_o_entity);
-    a_n_idx_selected = a_n_idx_selected || [];
-
-    let a_o_line = a_o_entity.filter(function(o){ return o.s_type === "LINE"; });
-    let a_o_arc = a_o_entity.filter(function(o){ return o.s_type === "ARC"; });
-    let a_o_circle = a_o_entity.filter(function(o){ return o.s_type === "CIRCLE"; });
-
-    // Compute bounding box
-    let n_x_min = Infinity, n_x_max = -Infinity;
-    let n_y_min = Infinity, n_y_max = -Infinity;
-    for(let o of a_o_line){
-        n_x_min = Math.min(n_x_min, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
-        n_x_max = Math.max(n_x_max, o.o_vec3_trn_start.n_x, o.o_vec3_trn_end.n_x);
-        n_y_min = Math.min(n_y_min, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
-        n_y_max = Math.max(n_y_max, o.o_vec3_trn_start.n_y, o.o_vec3_trn_end.n_y);
-    }
-    for(let o of a_o_arc){
-        let n_sx2 = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
-        let n_sy2 = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
-        let n_ex2 = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
-        let n_ey2 = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
-        n_x_min = Math.min(n_x_min, n_sx2, n_ex2, o.o_vec3_trn.n_x - o.n_radius);
-        n_x_max = Math.max(n_x_max, n_sx2, n_ex2, o.o_vec3_trn.n_x + o.n_radius);
-        n_y_min = Math.min(n_y_min, n_sy2, n_ey2, o.o_vec3_trn.n_y - o.n_radius);
-        n_y_max = Math.max(n_y_max, n_sy2, n_ey2, o.o_vec3_trn.n_y + o.n_radius);
-    }
-    for(let o of a_o_circle){
-        n_x_min = Math.min(n_x_min, o.o_vec3_trn.n_x - o.n_radius);
-        n_x_max = Math.max(n_x_max, o.o_vec3_trn.n_x + o.n_radius);
-        n_y_min = Math.min(n_y_min, o.o_vec3_trn.n_y - o.n_radius);
-        n_y_max = Math.max(n_y_max, o.o_vec3_trn.n_y + o.n_radius);
-    }
-
-    let n_pad = Math.max(n_x_max - n_x_min, n_y_max - n_y_min) * 0.15;
-    let n_vb_x = n_x_min - n_pad;
-    let n_vb_y = -(n_y_max + n_pad);
-    let n_vb_w = (n_x_max - n_x_min) + n_pad * 2;
-    let n_vb_h = (n_y_max - n_y_min) + n_pad * 2;
-    let n_sw = Math.max(n_vb_w, n_vb_h) * 0.015;
-    let n_r = n_sw * 1.5;
-    let n_r_endpoint = n_sw * 1.2;
-
-    let a_s = [];
-    a_s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + n_vb_x + ' ' + n_vb_y + ' ' + n_vb_w + ' ' + n_vb_h + '">');
-
-    // Draw entities
-    for(let o of a_o_line){
-        a_s.push('<line x1="' + o.o_vec3_trn_start.n_x + '" y1="' + (-o.o_vec3_trn_start.n_y) + '" x2="' + o.o_vec3_trn_end.n_x + '" y2="' + (-o.o_vec3_trn_end.n_y) + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
-    }
-    for(let o of a_o_arc){
-        let n_sx = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_start * Math.PI / 180);
-        let n_sy = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_start * Math.PI / 180);
-        let n_ex = o.o_vec3_trn.n_x + o.n_radius * Math.cos(o.n_ang_deg_end * Math.PI / 180);
-        let n_ey = o.o_vec3_trn.n_y + o.n_radius * Math.sin(o.n_ang_deg_end * Math.PI / 180);
-        let n_sweep = o.n_ang_deg_end - o.n_ang_deg_start;
-        if(n_sweep < 0) n_sweep += 360;
-        let n_large = n_sweep > 180 ? 1 : 0;
-        a_s.push('<path d="M ' + n_sx + ' ' + (-n_sy) + ' A ' + o.n_radius + ' ' + o.n_radius + ' 0 ' + n_large + ' 0 ' + n_ex + ' ' + (-n_ey) + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none" stroke-linecap="round"/>');
-    }
-    for(let o of a_o_circle){
-        a_s.push('<circle cx="' + o.o_vec3_trn.n_x + '" cy="' + (-o.o_vec3_trn.n_y) + '" r="' + o.n_radius + '" stroke="#8b74ea" stroke-width="' + n_sw + '" fill="none"/>');
-    }
-
-    // Draw interactive revolve point markers — grey by default (off), green when selected (on)
-    let n_font_size = n_sw * 1.2;
-    for(let n_idx = 0; n_idx < a_o_revolve_point.length; n_idx++){
-        let o_pt = a_o_revolve_point[n_idx];
-        let b_selected = a_n_idx_selected.indexOf(n_idx) !== -1;
-        let s_fill = b_selected ? '#48bb78' : '#666666';
-        let s_stroke_color = b_selected ? '#276749' : '#444444';
-        let s_opacity = b_selected ? '0.9' : '0.5';
-        a_s.push('<g data-endpoint-idx="' + n_idx + '" style="cursor:pointer;">');
-        a_s.push('<circle cx="' + o_pt.n_x + '" cy="' + (-o_pt.n_y) + '" r="' + n_r_endpoint + '" fill="' + s_fill + '" stroke="' + s_stroke_color + '" stroke-width="' + (n_sw * 0.5) + '" opacity="' + s_opacity + '"/>');
-        a_s.push('<text x="' + o_pt.n_x + '" y="' + ((-o_pt.n_y) + n_font_size * 0.35) + '" text-anchor="middle" fill="white" font-size="' + n_font_size + '" font-family="monospace" pointer-events="none">' + n_idx + '</text>');
-        a_s.push('</g>');
-    }
-
-    a_s.push('</svg>');
-    return a_s.join('\n');
 };
 
 let f_s_svg_entities_layer = function(a_o_entity, s_stroke, s_point_fill, n_sw, n_r){
@@ -698,13 +577,6 @@ let o_component__dxf2scad = {
                     {
                         s_tag: 'label', class: 'o_dxf2scad__upload_label',
                         a_o: [
-                            { s_tag: 'input', type: 'checkbox', 'v-model': 'b_right_angle_joints_only', ':disabled': 'b_profile_revolve_only || !b_joints' },
-                            { s_tag: 'span', innerText: ' Only right-angled joints' },
-                        ],
-                    },
-                    {
-                        s_tag: 'label', class: 'o_dxf2scad__upload_label',
-                        a_o: [
                             { s_tag: 'input', type: 'checkbox', 'v-model': 'b_remover', ':disabled': 'b_profile_revolve_only' },
                             { s_tag: 'span', innerText: ' Remover' },
                         ],
@@ -1043,7 +915,6 @@ let o_component__dxf2scad = {
                                 'v-if': 'o_svg__path',
                                 class: 'o_dxf2scad__preview o_dxf2scad__preview--standalone',
                                 'v-html': 'o_svg__path',
-                                'v-on:click': 'f_toggle_endpoint($event)',
                             },
                         ],
                     },
@@ -1149,7 +1020,6 @@ let o_component__dxf2scad = {
             o_state: o_state,
             b_endpoint_revolves: true,
             b_joints: true,
-            b_right_angle_joints_only: false,
             b_remover: false,
             b_profile_revolve_only: false,
             n_point_per_mm: 1,
@@ -1162,7 +1032,6 @@ let o_component__dxf2scad = {
             n_id__profile: null,
             n_id__profile_remover: null,
             n_id__path: null,
-            a_n_idx_selected_endpoint: [],
             s_scad_output: '',
             s_path_scad: '',
             s_status: '',
@@ -1217,7 +1086,7 @@ let o_component__dxf2scad = {
         },
         o_svg__path: function() {
             let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));
-            return o_dxf ? f_s_svg_path_with_endpoints(o_dxf, this.a_n_idx_selected_endpoint) : '';
+            return o_dxf ? f_s_svg_from_o_dxffile(o_dxf) : '';
         },
         b_can_generate: function() {
             if (!this.n_id__profile) return false;
@@ -1238,27 +1107,9 @@ let o_component__dxf2scad = {
                 b_mirror_side_override: this.b_mirror_side_override,
                 b_flip_y: this.b_flip_y,
                 b_endpoint_revolves: this.b_endpoint_revolves,
-                b_right_angle_joints_only: this.b_right_angle_joints_only,
                 b_round_mode: this.b_round_mode,
                 n_cylinder_radius: this.n_cylinder_radius,
-                a_o_selected_point: this.a_o_selected_point,
             });
-        },
-        // Compute deselected point coordinates from indices
-        a_o_selected_point: function(){
-            if(!this.n_id__path || this.a_n_idx_selected_endpoint.length === 0) return [];
-            let o_dxf = this.a_o_dxffile__all.find(function(o){ return o.n_id === this.n_id__path; }.bind(this));
-            if(!o_dxf || !o_dxf.s_json_a_o_entity) return [];
-            let a_o_entity = JSON.parse(o_dxf.s_json_a_o_entity);
-            let a_o_revolve_point = f_a_o_revolve_point_from_a_o_entity(a_o_entity);
-            let a_o_result = [];
-            for(let n_idx of this.a_n_idx_selected_endpoint){
-                if(n_idx < a_o_revolve_point.length){
-                    let o_pt = a_o_revolve_point[n_idx];
-                    a_o_result.push({ n_x: o_pt.n_x, n_y: o_pt.n_y, n_z: o_pt.n_z || 0 });
-                }
-            }
-            return a_o_result;
         },
     },
     mounted: function() {
@@ -1275,9 +1126,6 @@ let o_component__dxf2scad = {
             this.n_id__profile = o_tpl.n_id_dxffile_profile;
             this.n_id__profile_remover = o_tpl.n_id_dxffile_profile_remover;
             this.b_remover = true;
-        },
-        n_id__path: function() {
-            this.a_n_idx_selected_endpoint = [];
         },
         s_generation_inputs: function(s_val) {
             let o_self = this;
@@ -1299,28 +1147,6 @@ let o_component__dxf2scad = {
             for(let o_el of a_o_el){
                 f_init_pan_zoom(o_el);
             }
-        },
-
-        f_toggle_endpoint: function(o_event) {
-            // Walk up from click target to find the endpoint group
-            let o_el = o_event.target;
-            while(o_el && o_el !== o_event.currentTarget){
-                if(o_el.getAttribute && o_el.getAttribute('data-endpoint-idx') !== null){
-                    break;
-                }
-                o_el = o_el.parentNode;
-            }
-            if(!o_el || o_el === o_event.currentTarget) return;
-            let n_idx = parseInt(o_el.getAttribute('data-endpoint-idx'));
-            if(isNaN(n_idx)) return;
-            let a_copy = this.a_n_idx_selected_endpoint.slice();
-            let n_pos = a_copy.indexOf(n_idx);
-            if(n_pos === -1){
-                a_copy.push(n_idx);
-            } else {
-                a_copy.splice(n_pos, 1);
-            }
-            this.a_n_idx_selected_endpoint = a_copy;
         },
 
         f_upload_dxf: async function(o_event, s_type) {
@@ -1380,10 +1206,8 @@ let o_component__dxf2scad = {
                         b_mirror_side_override: o_self.b_mirror_side_override,
                         b_flip_y: o_self.b_flip_y,
                         b_endpoint_revolves: o_self.b_endpoint_revolves,
-                        b_right_angle_joints_only: o_self.b_right_angle_joints_only,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
-                        a_o_selected_point: o_self.a_o_selected_point,
                     })
                 );
 

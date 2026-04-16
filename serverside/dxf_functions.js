@@ -1452,7 +1452,7 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, a_o_selected_point = []){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1464,9 +1464,7 @@ let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
-    );
+    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection || [];
 
     let n_segments = 50;
 
@@ -1715,7 +1713,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_selected_point = []){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1727,15 +1725,8 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
-    );
+    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection || [];
     let a_o_connection = o_sketch__path.a_o_entity_connection;
-
-    // Helper: check if a connection point is selected (should get a joint/revolve)
-    let f_b_point_selected = function(o_vec3){
-        return a_o_selected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
-    };
 
     // Extension length for joints — must be long enough to fully overlap at any angle
     // Compute from profile dimensions (max of width and height ranges)
@@ -1795,23 +1786,27 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
         );
     };
 
-    // Generate joint blocks
+    // Generate joint blocks — type-aware rules:
+    //   ARC-ARC non-flowing tangent (≈0°)  → revolve cap
+    //   LINE-LINE ~90°                     → intersection joint
+    //   everything else                    → skip
     let s_joints = a_o_connection.map((o_conn, n_idx) => {
         if(o_conn.b_tangent) return ''; // skip smooth flowing connections
 
         let cp = o_conn.o_trn_vec3_connected;
-
-        // Only generate joint if this connection point has been selected by the user
-        if(!f_b_point_selected(cp)) return '';
-
         let n_ang = o_conn.n_ang_rad_between_entities;
+        let s_type_a = o_conn.o_entity_a.s_type;
+        let s_type_b = o_conn.o_entity_b.s_type;
+        let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
+        let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-        // Non-flowing tangent (angle ≈ 0°): entities double back — use endpoint revolves if enabled
+        // Non-flowing tangent (angle ≈ 0°): revolve cap, but only when both entities are arcs
         if(n_ang < (15 * Math.PI / 180)){
             if(!b_endpoint_revolves) return '';
+            if(!b_both_arcs) return '';
             let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
             let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
-            return `    // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
+            return `    // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
     translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
     rotate([0, 0, ${n_ang_a.toFixed(6)}])
     profile_endpoint_cap();
@@ -1820,25 +1815,19 @@ let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__p
     profile_endpoint_cap();`;
         }
 
+        // Non-tangent joint: require both LINE entities AND ~90° angle
+        let n_deg = n_ang * 180 / Math.PI;
+        if(!b_both_lines) return '';
+        if(Math.abs(n_deg - 90) > 15) return '';
+
         let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
         let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
-        let n_deg = n_ang * 180 / Math.PI;
-
-        // Right-angle-only mode: skip any joint that isn't ~90°
-        if(b_right_angle_joints_only){
-            if(Math.abs(n_deg - 90) > 15) return '';
-        }
-
-        if(n_entities_at_point > 2){
-            if(Math.abs(n_deg - 90) > 15) return '';
-        } else {
-            if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
-        }
+        if(n_entities_at_point <= 2 && f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
 
         let s_ext_a = f_s_extension_sweep(o_conn, o_conn.o_entity_a, o_conn.o_vec3_dir_entity_a, n_idx, 'a');
         let s_ext_b = f_s_extension_sweep(o_conn, o_conn.o_entity_b, o_conn.o_vec3_dir_entity_b, n_idx, 'b');
 
-        return `    // Joint ${n_idx} at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
+        return `    // Right-angle line joint at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
     intersection() {
         ${s_ext_a}
         ${s_ext_b}
@@ -1970,7 +1959,7 @@ ${s_joints}
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, b_right_angle_joints_only = false, a_o_selected_point = []){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -1985,9 +1974,7 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
     let a_o_entity_arc = a_o_entity__path.filter(o => o.s_type === "ARC");
     let a_o_entity_circle = a_o_entity__path.filter(o => o.s_type === "CIRCLE");
 
-    let a_o_endpoint = (o_sketch__path.a_o_pointwithrotation_noconnection || []).filter(
-        o => a_o_selected_point.some(d => Math.abs(d.n_x - o.o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o.o_vec3.n_y) < 0.01)
-    );
+    let a_o_endpoint = o_sketch__path.a_o_pointwithrotation_noconnection || [];
     let a_o_connection = o_sketch__path.a_o_entity_connection;
 
     let a_x = o_sketch__profile.a_o_vec3_trn.map(p => p.n_x);
@@ -2045,30 +2032,28 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         );
     };
 
-    // Helper: check if a connection point is selected (should get a joint/revolve)
-    let f_b_point_selected = function(o_vec3){
-        return a_o_selected_point.some(function(d){ return Math.abs(d.n_x - o_vec3.n_x) < 0.01 && Math.abs(d.n_y - o_vec3.n_y) < 0.01; });
-    };
-
-    // Generate joint blocks for a given profile variable and its endpoint cap module name
-    // b_extend_only: if true, use plain extension sweeps instead of intersection (for remover)
+    // Generate joint blocks — type-aware rules:
+    //   ARC-ARC non-flowing tangent (≈0°)  → revolve cap
+    //   LINE-LINE ~90°                     → intersection joint (or extensions for remover)
+    //   everything else                    → skip
     let f_s_joints = function(s_profile_var, s_cap_module, b_extend_only = false){
         return a_o_connection.map((o_conn, n_idx) => {
             if(o_conn.b_tangent) return '';
 
             let cp = o_conn.o_trn_vec3_connected;
-
-            // Only generate joint if this connection point has been selected by the user
-            if(!f_b_point_selected(cp)) return '';
-
             let n_ang = o_conn.n_ang_rad_between_entities;
+            let s_type_a = o_conn.o_entity_a.s_type;
+            let s_type_b = o_conn.o_entity_b.s_type;
+            let b_both_arcs = s_type_a === "ARC" && s_type_b === "ARC";
+            let b_both_lines = s_type_a === "LINE" && s_type_b === "LINE";
 
-            // Non-flowing tangent (angle ≈ 0°): use endpoint revolves if enabled
+            // Non-flowing tangent (angle ≈ 0°): revolve cap, but only when both entities are arcs
             if(n_ang < (15 * Math.PI / 180)){
                 if(!b_endpoint_revolves || b_round_mode) return '';
+                if(!b_both_arcs) return '';
                 let n_ang_a = Math.atan2(o_conn.o_vec3_dir_entity_a.n_y, o_conn.o_vec3_dir_entity_a.n_x) * 180 / Math.PI + 180;
                 let n_ang_b = Math.atan2(o_conn.o_vec3_dir_entity_b.n_y, o_conn.o_vec3_dir_entity_b.n_x) * 180 / Math.PI + 180;
-                return `        // Non-flowing tangent revolves at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
+                return `        // Tangent arc revolve at [${cp.n_x.toFixed(2)}, ${cp.n_y.toFixed(2)}]
         translate([${cp.n_x.toFixed(6)}, ${cp.n_y.toFixed(6)}, 0])
         rotate([0, 0, ${n_ang_a.toFixed(6)}])
         ${s_cap_module}();
@@ -2077,35 +2062,25 @@ let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dx
         ${s_cap_module}();`;
             }
 
+            // Non-tangent joint: require both LINE entities AND ~90° angle
+            let n_deg = n_ang * 180 / Math.PI;
+            if(!b_both_lines) return '';
+            if(Math.abs(n_deg - 90) > 15) return '';
+
             let s_key = `${cp.n_x.toFixed(4)},${cp.n_y.toFixed(4)}`;
             let n_entities_at_point = o_entity_count_by_point[s_key] ? o_entity_count_by_point[s_key].size : 2;
-            let n_deg = n_ang * 180 / Math.PI;
+            if(n_entities_at_point <= 2 && f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
 
-            // Right-angle-only mode: skip any joint that isn't ~90°
-            if(b_right_angle_joints_only){
-                if(Math.abs(n_deg - 90) > 15) return '';
-            }
-
-            if(n_entities_at_point > 2){
-                // 3+ entities at this point: only generate joints for ~90° pairs
-                if(Math.abs(n_deg - 90) > 15) return '';
-            } else {
-                // Exactly 2 entities: skip if point lies on another entity's path
-                if(f_b_point_on_other_entity(cp, o_conn.o_entity_a, o_conn.o_entity_b)) return '';
-            }
-
-            // Angled connection: extension sweeps
             let s_ext_a = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_a);
             let s_ext_b = f_s_extension_sweep(s_profile_var, o_conn, o_conn.o_vec3_dir_entity_b);
 
             if(b_extend_only){
-                // Remover: just extend sweeps past the joint (no intersection needed)
-                return `        // Joint ${n_idx} (extensions)
+                return `        // Right-angle line joint ${n_idx} (extensions)
         ${s_ext_a}
         ${s_ext_b}`;
             }
 
-            return `        // Joint ${n_idx}
+            return `        // Right-angle line joint ${n_idx}
         intersection() {
             ${s_ext_a}
             ${s_ext_b}

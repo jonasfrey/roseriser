@@ -1457,7 +1457,7 @@ profile_endpoint_cap(angle=90);
 
 // ===== SIMPLE SCAD GENERATION (no joints, no remover) =====
 
-let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0){
+let f_s_scad__generate_simple = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, b_endpoint_caps = false, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, n_iter_x = 1, n_iter_y = 1, n_dist_x = 100, n_dist_y = 100){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1550,35 +1550,48 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+// Grid tiling
+n_iter_x = ${n_iter_x};
+n_iter_y = ${n_iter_y};
+n_dist_x = ${n_dist_x};
+n_dist_y = ${n_dist_y};
+
+module positive_tile() {
+    union() {
+        // Sweep lines
+        ${a_o_entity_line.map((o, n_idx) => {
+            return `${s_sweep_function}(profile_mirroredx, line_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep arcs
+        ${a_o_entity_arc.map((o, n_idx) => {
+            return b_3d
+                ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
+                : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep circles
+        ${a_o_entity_circle.map((o, n_idx) => {
+            return b_3d
+                ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
+                : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
+        }).join('\n        ')}
+
+        // Endpoint caps (90° revolve of profile around its X axis)
+        ${b_endpoint_caps ? a_o_endpoint.map((o, idx) => {
+            return `translate(endpoint_${idx})
+        rotate([0, 0, endpoint_${idx}_angle])
+        profile_endpoint_cap();`;
+        }).join('\n        ') : '// (disabled)'}
+    }
+}
+
 // Shift model up so bottom face sits on Z=0 (flat on build plate)
 translate([0, 0, profile_height])
-union() {
-    // Sweep lines
-    ${a_o_entity_line.map((o, n_idx) => {
-        return `${s_sweep_function}(profile_mirroredx, line_${n_idx});`;
-    }).join('\n    ')}
-
-    // Sweep arcs
-    ${a_o_entity_arc.map((o, n_idx) => {
-        return b_3d
-            ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
-            : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
-    }).join('\n    ')}
-
-    // Sweep circles
-    ${a_o_entity_circle.map((o, n_idx) => {
-        return b_3d
-            ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
-            : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
-    }).join('\n    ')}
-
-    // Endpoint caps (90° revolve of profile around its X axis)
-    ${b_endpoint_caps ? a_o_endpoint.map((o, idx) => {
-        return `translate(endpoint_${idx})
-    rotate([0, 0, endpoint_${idx}_angle])
-    profile_endpoint_cap();`;
-    }).join('\n    ') : '// (disabled)'}
-}
+for (ix = [0 : n_iter_x - 1])
+    for (iy = [0 : n_iter_y - 1])
+        translate([ix * n_dist_x, iy * n_dist_y, 0])
+        positive_tile();
 `;
     return s_scad;
 };
@@ -1718,7 +1731,7 @@ function wrap_normal(p) =
     return { s_defs, n_radius };
 };
 
-let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
+let f_s_scad__generate_simple_joints = function(o_dxffile__profile, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, n_iter_x = 1, n_iter_y = 1, n_dist_x = 100, n_dist_y = 100){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
 
@@ -1940,48 +1953,61 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
+// Grid tiling
+n_iter_x = ${n_iter_x};
+n_iter_y = ${n_iter_y};
+n_dist_x = ${n_dist_x};
+n_dist_y = ${n_dist_y};
+
+module positive_tile() {
+    union() {
+        // Sweep lines
+        ${a_o_entity_line.map((o, n_idx) => {
+            if(b_round_mode) return `path_sweep(profile_mirroredx, line_${n_idx}, method="manual", normal=line_${n_idx}_normals);`;
+            return `path_sweep(profile_mirroredx, line_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep arcs
+        ${a_o_entity_arc.map((o, n_idx) => {
+            if(b_round_mode) return `path_sweep(profile_mirroredx, arc_path_${n_idx}, method="manual", normal=arc_path_${n_idx}_normals);`;
+            return b_3d
+                ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
+                : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
+        }).join('\n        ')}
+
+        // Sweep circles
+        ${a_o_entity_circle.map((o, n_idx) => {
+            if(b_round_mode) return `path_sweep(profile_mirroredx, circle_path_${n_idx}, closed=true, method="manual", normal=circle_path_${n_idx}_normals);`;
+            return b_3d
+                ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
+                : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
+        }).join('\n        ')}
+
+        // Endpoint caps
+        ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
+            return `translate(endpoint_${idx})
+        rotate([0, 0, endpoint_${idx}_angle])
+        profile_endpoint_cap();`;
+        }).join('\n        ')}
+
+        // Connection point joints
+${s_joints.replace(/^    /gm, '        ').replace(/^\s*$/gm, '')}
+    }
+}
+
 ${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
 translate([0, 0, profile_height])`}
-union() {
-    // Sweep lines
-    ${a_o_entity_line.map((o, n_idx) => {
-        if(b_round_mode) return `path_sweep(profile_mirroredx, line_${n_idx}, method="manual", normal=line_${n_idx}_normals);`;
-        return `path_sweep(profile_mirroredx, line_${n_idx});`;
-    }).join('\n    ')}
-
-    // Sweep arcs
-    ${a_o_entity_arc.map((o, n_idx) => {
-        if(b_round_mode) return `path_sweep(profile_mirroredx, arc_path_${n_idx}, method="manual", normal=arc_path_${n_idx}_normals);`;
-        return b_3d
-            ? `sweep_arc(profile_mirroredx, arc_${n_idx});`
-            : `sweep_arc_2d(profile_mirroredx, arc_${n_idx});`;
-    }).join('\n    ')}
-
-    // Sweep circles
-    ${a_o_entity_circle.map((o, n_idx) => {
-        if(b_round_mode) return `path_sweep(profile_mirroredx, circle_path_${n_idx}, closed=true, method="manual", normal=circle_path_${n_idx}_normals);`;
-        return b_3d
-            ? `sweep_circle(profile_mirroredx, circle_${n_idx});`
-            : `sweep_circle_2d(profile_mirroredx, circle_${n_idx});`;
-    }).join('\n    ')}
-
-    // Endpoint caps
-    ${(!b_endpoint_revolves || b_round_mode) ? '// (endpoint caps disabled)' : a_o_endpoint.map((o, idx) => {
-        return `translate(endpoint_${idx})
-    rotate([0, 0, endpoint_${idx}_angle])
-    profile_endpoint_cap();`;
-    }).join('\n    ')}
-
-    // Connection point joints
-${s_joints}
-}
+for (ix = [0 : n_iter_x - 1])
+    for (iy = [0 : n_iter_y - 1])
+        translate([ix * n_dist_x, iy * n_dist_y, 0])
+        positive_tile();
 `;
     return s_scad;
 };
 
 // ===== SIMPLE SCAD GENERATION WITH JOINTS AND REMOVER =====
 
-let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true){
+let f_s_scad__generate_simple_joints_remover = function(o_dxffile__profile, o_dxffile__profile_remover, o_dxffile__path, n_point_per_mm = 1, s_sweep_function = 'path_sweep2d', b_mirror_side_override = false, b_flip_y = false, b_round_mode = false, n_cylinder_radius = 0, b_endpoint_revolves = true, n_iter_x = 1, n_iter_y = 1, n_dist_x = 100, n_dist_y = 100){
     let a_o_entity__profile = JSON.parse(o_dxffile__profile.s_json_a_o_entity);
     let a_o_entity__profile_remover = JSON.parse(o_dxffile__profile_remover.s_json_a_o_entity);
     let a_o_entity__path = JSON.parse(o_dxffile__path.s_json_a_o_entity);
@@ -2254,10 +2280,13 @@ module sweep_circle_2d(profile, circle_def, n_segments=${n_segments}) {
 // ===== RENDER =====
 $fn = 32;
 
-${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
-translate([0, 0, profile_height])`}
-difference() {
-    // Main shape: sweeps + endpoint caps + joints
+// Grid tiling
+n_iter_x = ${n_iter_x};
+n_iter_y = ${n_iter_y};
+n_dist_x = ${n_dist_x};
+n_dist_y = ${n_dist_y};
+
+module positive_tile() {
     union() {
 ${f_s_sweep_block('profile_mirroredx')}
 
@@ -2271,8 +2300,9 @@ ${f_s_sweep_block('profile_mirroredx')}
         // Connection point joints
 ${f_s_joints('profile_mirroredx', 'profile_endpoint_cap')}
     }
+}
 
-    // Remover: same geometry but with aligned remover profile (DXF-relative positioning)
+module remover_tile() {
     union() {
 ${f_s_sweep_block('profile_remover_mirroredx_aligned')}
 
@@ -2285,6 +2315,24 @@ ${f_s_sweep_block('profile_remover_mirroredx_aligned')}
 
         // Connection point joints (remover — extend sweeps past joint, no intersection)
 ${f_s_joints('profile_remover_mirroredx_aligned', 'profile_remover_endpoint_cap_aligned', true)}
+    }
+}
+
+${b_round_mode ? '' : `// Shift model up so bottom face sits on Z=0 (flat on build plate)
+translate([0, 0, profile_height])`}
+// First union all positive tiles, then union all remover tiles, then difference.
+difference() {
+    union() {
+        for (ix = [0 : n_iter_x - 1])
+            for (iy = [0 : n_iter_y - 1])
+                translate([ix * n_dist_x, iy * n_dist_y, 0])
+                positive_tile();
+    }
+    union() {
+        for (ix = [0 : n_iter_x - 1])
+            for (iy = [0 : n_iter_y - 1])
+                translate([ix * n_dist_x, iy * n_dist_y, 0])
+                remover_tile();
     }
 }
 `;

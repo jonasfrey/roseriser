@@ -616,6 +616,21 @@ let o_component__dxf2scad = {
                 class: 'o_dxf2scad__upload_row',
                 'v-if': "!b_profile_revolve_only",
                 a_o: [
+                    { s_tag: 'div', class: 'o_dxf2scad__upload_label', innerText: 'Grid iterations X' },
+                    { s_tag: 'input', type: 'number', 'v-model.number': 'n_iter_x', min: '1', step: '1', class: 'o_dxf2scad__input_number' },
+                    { s_tag: 'div', class: 'o_dxf2scad__upload_label', innerText: 'Y' },
+                    { s_tag: 'input', type: 'number', 'v-model.number': 'n_iter_y', min: '1', step: '1', class: 'o_dxf2scad__input_number' },
+                    { s_tag: 'div', class: 'o_dxf2scad__upload_label', innerText: 'Dist X' },
+                    { s_tag: 'input', type: 'number', 'v-model.number': 'n_dist_x', step: '1', class: 'o_dxf2scad__input_number' },
+                    { s_tag: 'div', class: 'o_dxf2scad__upload_label', innerText: 'Dist Y' },
+                    { s_tag: 'input', type: 'number', 'v-model.number': 'n_dist_y', step: '1', class: 'o_dxf2scad__input_number' },
+                ],
+            },
+            {
+                s_tag: 'div',
+                class: 'o_dxf2scad__upload_row',
+                'v-if': "!b_profile_revolve_only",
+                a_o: [
                     {
                         s_tag: 'div',
                         class: 'o_dxf2scad__upload_label',
@@ -1023,6 +1038,10 @@ let o_component__dxf2scad = {
             b_remover: false,
             b_profile_revolve_only: false,
             n_point_per_mm: 1,
+            n_iter_x: 1,
+            n_iter_y: 1,
+            n_dist_x: 100,
+            n_dist_y: 100,
             s_sweep_function: 'path_sweep',
             b_mirror_side_override: false,
             b_flip_y: false,
@@ -1109,6 +1128,10 @@ let o_component__dxf2scad = {
                 b_endpoint_revolves: this.b_endpoint_revolves,
                 b_round_mode: this.b_round_mode,
                 n_cylinder_radius: this.n_cylinder_radius,
+                n_iter_x: this.n_iter_x,
+                n_iter_y: this.n_iter_y,
+                n_dist_x: this.n_dist_x,
+                n_dist_y: this.n_dist_y,
             });
         },
     },
@@ -1208,6 +1231,10 @@ let o_component__dxf2scad = {
                         b_endpoint_revolves: o_self.b_endpoint_revolves,
                         b_round_mode: o_self.b_round_mode,
                         n_cylinder_radius: o_self.n_cylinder_radius,
+                        n_iter_x: o_self.n_iter_x,
+                        n_iter_y: o_self.n_iter_y,
+                        n_dist_x: o_self.n_dist_x,
+                        n_dist_y: o_self.n_dist_y,
                     })
                 );
 

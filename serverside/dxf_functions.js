@@ -207,6 +207,101 @@ let f_a_o_entity_deduplicated = function(a_o_entity){
     return a_o_result;
 };
 
+// ===== POLYLINE EXPANSION =====
+// LWPOLYLINE / POLYLINE entities are expanded into a sequence of LINE and ARC
+// entities so all downstream logic (connection detection, grouping, point
+// extraction) works on them unchanged.
+//
+// A vertex pair forms a straight LINE, unless the start vertex carries a bulge,
+// in which case it forms an ARC. bulge = tan(theta / 4) where theta is the
+// signed (CCW-positive) included angle of the arc segment.
+
+let f_o_entity_arc_from_bulge = function(o_vec3_trn_start, o_vec3_trn_end, n_bulge){
+    let n_dx = o_vec3_trn_end.n_x - o_vec3_trn_start.n_x;
+    let n_dy = o_vec3_trn_end.n_y - o_vec3_trn_start.n_y;
+    let n_len_chord = Math.sqrt(n_dx * n_dx + n_dy * n_dy);
+    if(n_len_chord === 0) return null;
+
+    // included (signed) arc angle and signed radius
+    let n_ang_rad_included = 4 * Math.atan(n_bulge);
+    let n_radius = n_len_chord / (2 * Math.sin(n_ang_rad_included / 2));
+
+    // chord midpoint
+    let n_mid_x = (o_vec3_trn_start.n_x + o_vec3_trn_end.n_x) / 2;
+    let n_mid_y = (o_vec3_trn_start.n_y + o_vec3_trn_end.n_y) / 2;
+
+    // signed apothem (distance from chord midpoint to center along the
+    // perpendicular); the sign of the bulge flips which side the center is on
+    let n_apothem = (n_len_chord / 2) / Math.tan(n_ang_rad_included / 2);
+
+    // unit perpendicular to the chord (left of the start->end direction)
+    let n_perp_x = -n_dy / n_len_chord;
+    let n_perp_y = n_dx / n_len_chord;
+
+    let o_vec3_trn_center = f_o_vec3(
+        n_mid_x + n_perp_x * n_apothem,
+        n_mid_y + n_perp_y * n_apothem,
+        o_vec3_trn_start.n_z
+    );
+
+    let n_ang_deg_at_start = Math.atan2(
+        o_vec3_trn_start.n_y - o_vec3_trn_center.n_y,
+        o_vec3_trn_start.n_x - o_vec3_trn_center.n_x
+    ) * 180 / Math.PI;
+    let n_ang_deg_at_end = Math.atan2(
+        o_vec3_trn_end.n_y - o_vec3_trn_center.n_y,
+        o_vec3_trn_end.n_x - o_vec3_trn_center.n_x
+    ) * 180 / Math.PI;
+
+    // ARC entities sweep CCW from start angle to end angle. A positive bulge
+    // already runs CCW from start->end; a negative bulge runs CW, so the
+    // endpoints are swapped to express the same geometry as a CCW arc.
+    let n_ang_deg_start = n_bulge >= 0 ? n_ang_deg_at_start : n_ang_deg_at_end;
+    let n_ang_deg_end = n_bulge >= 0 ? n_ang_deg_at_end : n_ang_deg_at_start;
+
+    return f_o_entity(
+        "ARC",
+        null, null,
+        Math.abs(n_radius),
+        n_ang_deg_start,
+        n_ang_deg_end,
+        o_vec3_trn_center
+    );
+};
+
+let f_a_o_entity_from_polyline = function(o_ent){
+    let a_o_result = [];
+    let a_o_vertex = o_ent.vertices || [];
+    if(a_o_vertex.length < 2) return a_o_result;
+
+    // a closed polyline (group code 70 bit 1 -> o_ent.shape) wraps the last
+    // vertex back to the first
+    let n_its = o_ent.shape ? a_o_vertex.length : a_o_vertex.length - 1;
+
+    for(let n_it = 0; n_it < n_its; n_it++){
+        let o_vertex_start = a_o_vertex[n_it];
+        let o_vertex_end = a_o_vertex[(n_it + 1) % a_o_vertex.length];
+        let o_vec3_trn_start = f_o_vec3(o_vertex_start.x, o_vertex_start.y, o_vertex_start.z ?? 0);
+        let o_vec3_trn_end = f_o_vec3(o_vertex_end.x, o_vertex_end.y, o_vertex_end.z ?? 0);
+
+        // skip zero-length segments (duplicate consecutive vertices)
+        if(f_b_vec3_equal(o_vec3_trn_start, o_vec3_trn_end)) continue;
+
+        let n_bulge = o_vertex_start.bulge ?? 0;
+        if(n_bulge !== 0){
+            let o_entity_arc = f_o_entity_arc_from_bulge(o_vec3_trn_start, o_vec3_trn_end, n_bulge);
+            if(o_entity_arc){
+                a_o_result.push(o_entity_arc);
+                continue;
+            }
+        }
+
+        a_o_result.push(f_o_entity("LINE", o_vec3_trn_start, o_vec3_trn_end));
+    }
+
+    return a_o_result;
+};
+
 // ===== DXF PARSING =====
 
 let f_o_dxf_from_s_dxf = function(s_dxf){
@@ -242,6 +337,10 @@ let f_a_o_entity_from_o_dxf = function(o_dxf){
                 null, null,
                 f_o_vec3(o_ent.center.x, o_ent.center.y, o_ent.center.z ?? 0)
             );
+        } else if (o_ent.type === "LWPOLYLINE" || o_ent.type === "POLYLINE") {
+            // expand into LINE / ARC entities and add them directly
+            let a_o_entity__expanded = f_a_o_entity_from_polyline(o_ent);
+            a_o.push(...a_o_entity__expanded);
         }
         if(o_ent2) a_o.push(o_ent2);
     }
